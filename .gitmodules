@@ -1,3 +1,6 @@
 [submodule "UAssetAPI"]
 	path = UAssetAPI
 	url = https://github.com/atenfyr/UAssetAPI.git
+[submodule "NodeEditorWinforms"]
+	path = NodeEditorWinforms
+	url = https://github.com/trumank/NodeEditorWinforms.git

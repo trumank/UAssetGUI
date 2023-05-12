@@ -3,6 +3,7 @@
     <ProjectGuid>{88A998F1-C512-416F-ADED-120E50AFE6F3}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net472</TargetFramework>
+    <LangVersion>9.0</LangVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <AssemblyTitle>UAssetGUI</AssemblyTitle>
     <Product>UAssetGUI</Product>
@@ -110,10 +111,12 @@
     <EmbeddedResource Include="git_commit.txt">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
+    <None Include="Resources\grid.png" />
     <Content Include="next_patch_notes.txt" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\UAssetAPI\UAssetAPI\UAssetAPI.csproj" />
+    <ProjectReference Include="..\NodeEditorWinforms\NodeEditor\NodeEditor.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Costura.Fody" Version="5.7.0">

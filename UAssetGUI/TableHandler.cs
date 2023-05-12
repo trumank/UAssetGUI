@@ -1638,7 +1638,7 @@ namespace UAssetGUI
                                     UAssetAPI.Kismet.KismetSerializer.asset = asset;
                                     Control currentlyFocusedControl1 = origForm.ActiveControl;
                                     dataGridView1.Visible = false;
-                                    jsonView.Text = new JObject(new JProperty("Script", SerializeScript(bytecode))).ToString();
+                                    jsonView.SetBytecode(bytecode);
                                     jsonView.Visible = true;
                                     currentlyFocusedControl1.Focus();
                                     origForm.ForceResize();

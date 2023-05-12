@@ -1,5 +1,6 @@
 ﻿using DiscordRPC;
 using Newtonsoft.Json;
+using NodeEditor;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
@@ -33,7 +34,7 @@ namespace UAssetGUI
 
         public TableHandler tableEditor;
         public ByteViewer byteView1;
-        public TextBox jsonView;
+        public KismetEditor jsonView;
 
         private DiscordRpcClient _discordRpc = null;
 
@@ -120,7 +121,7 @@ namespace UAssetGUI
             this.AllowDrop = true;
             dataGridView1.Visible = true;
 
-            // Extra data viewer
+            // Extra data ByteViewer
             byteView1 = new ByteViewer
             {
                 Dock = DockStyle.Fill,
@@ -130,14 +131,10 @@ namespace UAssetGUI
             };
             splitContainer1.Panel2.Controls.Add(byteView1);
 
-            jsonView = new TextBox
+            jsonView = new KismetEditor
             {
                 Dock = DockStyle.Fill,
                 Visible = false,
-                AutoSize = true,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Both
             };
             splitContainer1.Panel2.Controls.Add(jsonView);
 
