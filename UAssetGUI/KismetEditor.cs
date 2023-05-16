@@ -161,7 +161,7 @@ namespace UAssetGUI
                 };
 
                 nodeMap.Add(ex, node);
-                NodeEditor.graph.Nodes.Add(node);
+                NodeEditor.AddNode(node, false);
                 return node;
             }
 
@@ -212,6 +212,7 @@ namespace UAssetGUI
                     case EX_UnicodeStringConst:
                     case EX_UInt64Const:
                     case EX_Int64Const:
+                        type.CustomEditor = typeof(TextBox);
                         break;
                     case EX_CallMath e:
                         {
@@ -270,7 +271,7 @@ namespace UAssetGUI
                 }
 
                 nodeMap.Add(ex, node);
-                NodeEditor.graph.Nodes.Add(node);
+                NodeEditor.AddNode(node, false);
                 return node;
             }
 
@@ -357,6 +358,7 @@ namespace UAssetGUI
                         var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
                         node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * scaleX;
                         node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * scaleY;
+                        node.LayoutEditor(NodeEditor.Zoom);
                         break;
                 }
             }
