@@ -234,9 +234,15 @@ namespace UAssetGUI
             dot.WriteLine("strict digraph {");
             dot.WriteLine("rankdir=\"LR\"");
             var nodeDict = NodeEditor.graph.Nodes.Select((v, i) => (v, i)).ToDictionary(p => p.v, p => p.i);
+            foreach (var entry in nodeDict)
+            {
+                var inputs = String.Join(" | ", entry.Key.GetInputs().Select(p => $"<{p.Name}>{p.Name}"));
+                var outputs = String.Join(" | ", entry.Key.GetOutputs().Select(p => $"<{p.Name}>{p.Name}"));
+                dot.WriteLine($"{entry.Value} [shape=\"record\", label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
+            }
             foreach (var conn in NodeEditor.graph.Connections)
             {
-                dot.WriteLine($"{nodeDict[conn.OutputNode]} -> {nodeDict[conn.InputNode]}");
+                dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w");
             }
             dot.WriteLine("}");
             dot.Close();
