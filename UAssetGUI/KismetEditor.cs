@@ -66,17 +66,7 @@ namespace UAssetGUI
 
         public void SetBytecode(KismetExpression[] bytecode)
         {
-            NodeEditor.graph.Nodes.Clear();
-            NodeEditor.graph.Connections.Clear();
-
-            int startX = 200;
-            int startY = 200;
-            int posX = startX;
-            int posY = startY;
-            int stepX = 200;
-            int stepY = 200;
-            int maxX = 1000;
-            int maxY = 1000;
+            NodeEditor.Clear();
 
             var offsets = GetOffsets(bytecode).ToDictionary(l => l.Item1, l => l.Item2);
             var nodeMap = new Dictionary<KismetExpression, NodeVisual>();
@@ -98,16 +88,8 @@ namespace UAssetGUI
                     Parameters = new List<Parameter>{},
                 };
 
-                void add_exec()
-                {
-                    type.Parameters.Add(PinExecute);
-                    type.Parameters.Add(PinThen);
-                }
-
                 node = new NodeVisual()
                 {
-                    X = posX,
-                    Y = posY,
                     Type = type,
                     Callable = false,
                     ExecInit = false,
@@ -137,7 +119,6 @@ namespace UAssetGUI
 
                 switch (ex)
                 {
-                    case EX_Return:
                     case EX_EndOfScript:
                         break;
                     case EX_Return:
@@ -297,15 +278,6 @@ namespace UAssetGUI
             foreach (var ex in bytecode)
             {
                 var node = BuildExecNode(index, ex);
-                node.X = posX;
-                node.Y = posY;
-                maxX = Math.Max(maxX, (int) node.X);
-                maxY = Math.Max(maxY, (int) node.Y);
-                NodeEditor.graph.Nodes.Add(node);
-
-                posX += stepX;
-
-                Console.WriteLine($"{index}: {ex}");
                 index += GetSize(ex);
             }
             foreach (var jump in jumpConnections)
@@ -335,8 +307,6 @@ namespace UAssetGUI
                 NodeEditor.graph.Connections.Add(conn);
             }
 
-            NodeEditor.Size = new System.Drawing.Size(maxX + stepX, maxY + stepY);
-
             LayoutNodes();
 
             NodeEditor.Refresh();
@@ -346,7 +316,7 @@ namespace UAssetGUI
         public void LayoutNodes()
         {
             var info = new ProcessStartInfo("graphviz/dot.exe");
-            info.Arguments = "-Tplain";
+            info.Arguments = "-Tplain -y";
             info.UseShellExecute = false;
             info.CreateNoWindow = true;
             info.RedirectStandardOutput = true;
@@ -362,15 +332,18 @@ namespace UAssetGUI
             {
                 var inputs = String.Join(" | ", entry.Key.GetInputs().Select(p => $"<{p.Name}>{p.Name}"));
                 var outputs = String.Join(" | ", entry.Key.GetOutputs().Select(p => $"<{p.Name}>{p.Name}"));
-                dot.WriteLine($"{entry.Value} [shape=\"record\", label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
+                dot.WriteLine($"{entry.Value} [shape=\"record\", width=4, label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
             }
             foreach (var conn in NodeEditor.graph.Connections)
             {
-                dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w");
+                var weight = conn.GetType() == typeof(ExecutionPath) ? 3 : 1; // can't tell if this is actually doing anything
+                dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w [weight = {weight}]");
             }
             dot.WriteLine("}");
             dot.Close();
 
+            var scaleX = 50.0f;
+            var scaleY = 80.0f;
             string line;
             while ((line = p.StandardOutput.ReadLine()) != null)
             {
@@ -378,13 +351,12 @@ namespace UAssetGUI
                 switch (split[0])
                 {
                     case "graph":
-                        NodeEditor.Size = new System.Drawing.Size((int) (float.Parse(split[2], CultureInfo.InvariantCulture) * 200) + 200, (int) (float.Parse(split[3], CultureInfo.InvariantCulture) * 100) + 100);
-                        Console.WriteLine($"{NodeEditor.Size.Width}x{NodeEditor.Size.Height}");
+                        NodeEditor.Size = new System.Drawing.Size((int) ((3 + float.Parse(split[2], CultureInfo.InvariantCulture)) * scaleX), (int) ((3 + float.Parse(split[3], CultureInfo.InvariantCulture)) * scaleY));
                         break;
                     case "node":
                         var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
-                        node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * 200;
-                        node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * 100;
+                        node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * scaleX;
+                        node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * scaleY;
                         break;
                 }
             }
