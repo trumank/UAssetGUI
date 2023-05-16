@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -212,8 +213,53 @@ namespace UAssetGUI
 
             NodeEditor.Size = new System.Drawing.Size(maxX + stepX, maxY + stepY);
 
+            LayoutNodes();
+
             NodeEditor.Refresh();
             NodeEditor.needRepaint = true;
+        }
+
+        public void LayoutNodes()
+        {
+            var info = new ProcessStartInfo("graphviz/dot.exe");
+            info.Arguments = "-Tplain";
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardInput = true;
+            var p = Process.Start(info);
+
+            var dot = p.StandardInput;
+
+            dot.WriteLine("strict digraph {");
+            dot.WriteLine("rankdir=\"LR\"");
+            var nodeDict = NodeEditor.graph.Nodes.Select((v, i) => (v, i)).ToDictionary(p => p.v, p => p.i);
+            foreach (var conn in NodeEditor.graph.Connections)
+            {
+                dot.WriteLine($"{nodeDict[conn.OutputNode]} -> {nodeDict[conn.InputNode]}");
+            }
+            dot.WriteLine("}");
+            dot.Close();
+
+            string line;
+            while ((line = p.StandardOutput.ReadLine()) != null)
+            {
+                var split = line.Split(' ');
+                switch (split[0])
+                {
+                    case "graph":
+                        NodeEditor.Size = new System.Drawing.Size((int) (float.Parse(split[2], CultureInfo.InvariantCulture) * 200) + 200, (int) (float.Parse(split[3], CultureInfo.InvariantCulture) * 100) + 100);
+                        Console.WriteLine($"{NodeEditor.Size.Width}x{NodeEditor.Size.Height}");
+                        break;
+                    case "node":
+                        var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
+                        node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * 200;
+                        node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * 100;
+                        break;
+                }
+            }
+
+            p.WaitForExit();
         }
 
         public static IEnumerable<(uint, KismetExpression)> GetOffsets(KismetExpression[] bytecode) {
