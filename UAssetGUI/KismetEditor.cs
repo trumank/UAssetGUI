@@ -60,6 +60,21 @@ namespace UAssetGUI
                 }
             };
         }
+
+
+        public class Value{}
+        static Parameter PinExecute = new Parameter { Name = "execute", Direction = Direction.In, ParameterType = typeof(ExecutionPath) };
+        static Parameter PinThen = new Parameter { Name = "then", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) };
+        static Parameter PinInValue = new Parameter { Name = "in", Direction = Direction.In, ParameterType = typeof(Value) };
+        static Parameter PinOutValue = new Parameter { Name = "out", Direction = Direction.Out, ParameterType = typeof(Value) };
+
+        internal struct JumpConnection
+        {
+            internal NodeVisual OutputNode;
+            internal string OutputPin;
+            internal uint InputIndex;
+        }
+
         public void SetBytecode(KismetExpression[] bytecode)
         {
             NodeEditor.graph.Nodes.Clear();
@@ -77,98 +92,128 @@ namespace UAssetGUI
             var offsets = GetOffsets(bytecode).ToDictionary(l => l.Item1, l => l.Item2);
             var nodeMap = new Dictionary<KismetExpression, NodeVisual>();
 
-            NodeVisual lastNode = null;
-            foreach (var ex in bytecode)
+
+            var jumpConnections = new List<JumpConnection>();
+
+            NodeVisual BuildExecNode(uint index, KismetExpression ex)
             {
+                NodeVisual node;
+                if (nodeMap.TryGetValue(ex, out node))
+                    return node;
+
                 var name = ex.GetType().Name;
 
-                var node = new NodeVisual()
+                var type = new CustomNodeType
+                {
+                    Name = ex.GetType().Name,
+                    Parameters = new List<Parameter>{},
+                };
+
+                void add_exec()
+                {
+                    type.Parameters.Add(PinExecute);
+                    type.Parameters.Add(PinThen);
+                }
+
+                node = new NodeVisual()
                 {
                     X = posX,
                     Y = posY,
-                    Type = GetNodeContext(ex),
+                    Type = type,
                     Callable = false,
                     ExecInit = false,
-                    Name = name,
+                    Name = $"{index}: {name}",
                     Order = NodeEditor.graph.Nodes.Count,
                 };
+
+                switch (ex)
+                {
+                    case EX_Return:
+                    case EX_EndOfScript:
+                    case EX_PopExecutionFlow:
+                    case EX_ComputedJump:
+                        type.Parameters.Add(PinExecute);
+                        break;
+                    case EX_Jump e:
+                        add_exec();
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = e.CodeOffset });
+                        break;
+                    case EX_JumpIfNot e:
+                        add_exec();
+                        type.Parameters.Add(new Parameter { Name = "else", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
+                        type.Parameters.Add(new Parameter { Name = "condition", Direction = Direction.In, ParameterType = typeof(bool) });
+
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = index + GetSize(ex) });
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "else", InputIndex = e.CodeOffset });
+                        break;
+                    case EX_PushExecutionFlow e:
+                        type.Parameters.Add(PinExecute);
+                        type.Parameters.Add(new Parameter { Name = "first", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
+                        type.Parameters.Add(new Parameter { Name = "then", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
+
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "first", InputIndex = index + GetSize(ex) });
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = e.PushingAddress });
+                        break;
+                    case EX_PopExecutionFlowIfNot e:
+                        add_exec();
+                        type.Parameters.Add(new Parameter { Name = "condition", Direction = Direction.In, ParameterType = typeof(bool) });
+                        break;
+                    default:
+                        add_exec();
+                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = index + GetSize(ex) });
+                        break;
+                };
+
+                nodeMap.Add(ex, node);
+                return node;
+            }
+
+            uint index = 0;
+            foreach (var ex in bytecode)
+            {
+                var node = BuildExecNode(index, ex);
+                node.X = posX;
+                node.Y = posY;
                 maxX = Math.Max(maxX, (int) node.X);
                 maxY = Math.Max(maxY, (int) node.Y);
-                nodeMap.Add(ex, node);
                 NodeEditor.graph.Nodes.Add(node);
 
-                if (lastNode != null)
+                posX += stepX;
+
+                Console.WriteLine($"{index}: {ex}");
+                index += GetSize(ex);
+            }
+            foreach (var jump in jumpConnections)
+            {
+                KismetExpression ex;
+                if (!offsets.TryGetValue(jump.InputIndex, out ex))
                 {
-                    NodeEditor.graph.Connections.Add(new NodeConnection
-                    {
-                        OutputNode = lastNode,
-                        OutputSocketName = "then",
-                        InputNode = node,
-                        InputSocketName = "execute",
-                    });
+                    Console.WriteLine($"could not find expression at {jump.InputIndex}");
+                    continue;
+                }
+                NodeVisual node;
+                if (!nodeMap.TryGetValue(ex, out node))
+                {
+                    Console.WriteLine($"could not find node at {jump.InputIndex}");
+                    continue;
                 }
 
-                var next = ex switch
+                var conn = new NodeConnection
                 {
-                    EX_EndOfScript => true,
-                    EX_Return => true,
-                    EX_PopExecutionFlow => true,
-                    _ => false,
+                    OutputNode = jump.OutputNode,
+                    OutputSocketName = jump.OutputPin,
+                    InputNode = node,
+                    InputSocketName = "execute",
                 };
-                if (next)
-                {
-                    posX = startX;
-                    posY += stepY;
-                    lastNode = null;
-                }
-                else
-                {
-                    posX += stepX;
-                    lastNode = node;
-                }
+                //Console.WriteLine($"{jump.OutputNode} {node}");
+                //Console.WriteLine($"{conn.OutputSocket} {conn.InputSocket}");
+                NodeEditor.graph.Connections.Add(conn);
             }
 
             NodeEditor.Size = new System.Drawing.Size(maxX + stepX, maxY + stepY);
 
             NodeEditor.Refresh();
             NodeEditor.needRepaint = true;
-        }
-
-
-        static Parameter PinExecute = new Parameter { Name = "execute", Direction = Direction.In, ParameterType = typeof(ExecutionPath) };
-        static Parameter PinThen = new Parameter { Name = "then", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) };
-        public static CustomNodeType GetNodeContext(KismetExpression ex) {
-            var type = new CustomNodeType
-            {
-                Name = ex.GetType().Name,
-                Parameters = new List<Parameter>{},
-            };
-
-            void add_exec()
-            {
-                type.Parameters.Add(PinExecute);
-                type.Parameters.Add(PinThen);
-            }
-
-            switch (ex)
-            {
-                case EX_PopExecutionFlow e:
-                    type.Parameters.Add(PinExecute);
-                    break;
-                case EX_PopExecutionFlowIfNot e:
-                    add_exec();
-                    type.Parameters.Add(new Parameter
-                    {
-                        Name = "condition",
-                        Direction = Direction.In,
-                        ParameterType = typeof(bool),
-                    });
-                    break;
-                default:
-                    add_exec();
-                    break;
-            };
-            return type;
         }
 
         public static IEnumerable<(uint, KismetExpression)> GetOffsets(KismetExpression[] bytecode) {
@@ -371,7 +416,8 @@ namespace UAssetGUI
                     break;
             }
         }
-        public static uint GetSize(KismetExpression exp) {
+        public static uint GetSize(KismetExpression exp)
+        {
             return 1 + exp switch
             {
                 EX_PushExecutionFlow => 4,
@@ -379,6 +425,7 @@ namespace UAssetGUI
                 EX_Jump e => 4,
                 EX_JumpIfNot e => 4 + GetSize(e.BooleanExpression),
                 EX_LocalVariable e => 8,
+                EX_DefaultVariable e => 8,
                 EX_ObjToInterfaceCast e => 8 + GetSize(e.Target),
                 EX_Let e => 8 + GetSize(e.Variable) + GetSize(e.Expression),
                 EX_LetObj e => GetSize(e.VariableExpression) + GetSize(e.AssignmentExpression),
@@ -391,7 +438,7 @@ namespace UAssetGUI
                 EX_PrimitiveCast e => 1 + e.ConversionType switch { ECastToken.ObjectToInterface => 8U, /* TODO InterfaceClass */ _ => 0U} + GetSize(e.Target),
                 EX_PopExecutionFlow e => 0,
                 EX_PopExecutionFlowIfNot e => GetSize(e.BooleanExpression),
-                EX_CallMath e => e.Parameters.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
+                EX_CallMath e => 8 + e.Parameters.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
                 EX_SwitchValue e => 6 + GetSize(e.IndexTerm) + e.Cases.Select(c => GetSize(c.CaseIndexValueTerm) + 4 + GetSize(c.CaseTerm)).Aggregate(0U, (acc, x) => x + acc) + GetSize(e.DefaultTerm),
                 EX_Self => 0,
                 EX_TextConst e =>
@@ -421,17 +468,23 @@ namespace UAssetGUI
                 EX_BindDelegate e => 12 + GetSize(e.Delegate) + GetSize(e.ObjectTerm),
                 EX_StructConst e => 8 + 4 + e.Value.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
                 EX_SetArray e => GetSize(e.AssigningProperty) + e.Elements.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
+                EX_SetMap e => GetSize(e.MapProperty) + 4 + e.Elements.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
+                EX_SetSet e => GetSize(e.SetProperty) + 4 + e.Elements.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
                 EX_SoftObjectConst e => GetSize(e.Value),
                 EX_ByteConst e => 1,
                 EX_IntConst e => 4,
                 EX_FloatConst e => 4,
+                EX_Int64Const e => 8,
+                EX_UInt64Const e => 8,
                 EX_NameConst e => 12,
                 EX_StringConst e => (uint) e.Value.Length + 1,
+                EX_UnicodeStringConst e => 2 * ((uint) e.Value.Length + 1),
                 EX_SkipOffsetConst e => 4,
                 EX_ArrayConst e => 12 + e.Elements.Select(p => GetSize(p)).Aggregate(0U, (acc, x) => x + acc) + 1,
                 EX_Return e => GetSize(e.ReturnExpression),
                 EX_LocalOutVariable e => 8,
                 EX_InterfaceContext e => GetSize(e.InterfaceValue),
+                EX_InterfaceToObjCast e => 8 + GetSize(e.Target),
                 EX_ArrayGetByRef e => GetSize(e.ArrayVariable) + GetSize(e.ArrayIndex),
                 EX_True e => 0,
                 EX_False e => 0,
