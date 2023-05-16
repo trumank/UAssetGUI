@@ -115,45 +115,181 @@ namespace UAssetGUI
                     Order = NodeEditor.graph.Nodes.Count,
                 };
 
+                void exec()
+                {
+                    type.Parameters.Add(PinExecute);
+                }
+                void jump(string name, uint to)
+                {
+                    type.Parameters.Add(new Parameter { Name = name, Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
+                    jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = name, InputIndex = to });
+                }
+                void then(string name = "then")
+                {
+                    jump(name, index + GetSize(ex));
+                }
+                void input(string name, KismetExpression ex)
+                {
+                    type.Parameters.Add(new Parameter { Name = name, Direction = Direction.In, ParameterType = typeof(Value) });
+                    var variable = BuildExpressionNode(ex);
+                    NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
+                }
+
                 switch (ex)
                 {
                     case EX_Return:
                     case EX_EndOfScript:
+                        break;
+                    case EX_Return:
                     case EX_PopExecutionFlow:
                     case EX_ComputedJump:
-                        type.Parameters.Add(PinExecute);
+                        exec();
                         break;
                     case EX_Jump e:
-                        add_exec();
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = e.CodeOffset });
+                        exec();
+                        jump("then", e.CodeOffset);
                         break;
                     case EX_JumpIfNot e:
-                        add_exec();
-                        type.Parameters.Add(new Parameter { Name = "else", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
-                        type.Parameters.Add(new Parameter { Name = "condition", Direction = Direction.In, ParameterType = typeof(bool) });
-
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = index + GetSize(ex) });
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "else", InputIndex = e.CodeOffset });
+                        exec();
+                        jump("else", e.CodeOffset);
+                        then();
+                        input("condition", e.BooleanExpression);
                         break;
                     case EX_PushExecutionFlow e:
-                        type.Parameters.Add(PinExecute);
-                        type.Parameters.Add(new Parameter { Name = "first", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
-                        type.Parameters.Add(new Parameter { Name = "then", Direction = Direction.Out, ParameterType = typeof(ExecutionPath) });
-
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "first", InputIndex = index + GetSize(ex) });
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = e.PushingAddress });
+                        exec();
+                        then("first");
+                        jump("then", e.PushingAddress);
                         break;
                     case EX_PopExecutionFlowIfNot e:
-                        add_exec();
-                        type.Parameters.Add(new Parameter { Name = "condition", Direction = Direction.In, ParameterType = typeof(bool) });
+                        exec(); then();
+                        input("condition", e.BooleanExpression);
+                        break;
+                    case EX_LetObj e:
+                        exec(); then();
+                        input("variable", e.VariableExpression);
+                        input("value", e.AssignmentExpression);
+                        break;
+                    case EX_Let e:
+                        exec(); then();
+                        input("variable", e.Variable);
+                        input("value", e.Expression);
                         break;
                     default:
-                        add_exec();
-                        jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = index + GetSize(ex) });
+                        exec(); then();
                         break;
                 };
 
                 nodeMap.Add(ex, node);
+                NodeEditor.graph.Nodes.Add(node);
+                return node;
+            }
+
+            NodeVisual BuildExpressionNode(KismetExpression ex)
+            {
+                var type = new CustomNodeType
+                {
+                    Name = ex.GetType().Name,
+                    Parameters = new List<Parameter>{},
+                };
+
+                var node = new NodeVisual()
+                {
+                    Type = type,
+                    Callable = false,
+                    ExecInit = false,
+                    Name = type.Name,
+                    Order = NodeEditor.graph.Nodes.Count,
+                };
+
+                type.Parameters.Add(PinOutValue);
+
+                void exp(string name, KismetExpression ex)
+                {
+                    var variable = BuildExpressionNode(ex);
+                    type.Parameters.Add(new Parameter { Name = name, Direction = Direction.In, ParameterType = typeof(Value) });
+                    NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
+                }
+
+                switch (ex)
+                {
+                    case EX_Self:
+                    case EX_LocalVariable:
+                    case EX_LocalOutVariable:
+                    case EX_InstanceVariable:
+                    case EX_ComputedJump:
+                    case EX_NoObject:
+                    case EX_IntOne:
+                    case EX_IntZero:
+                    case EX_IntConst:
+                    case EX_True:
+                    case EX_False:
+                    case EX_ByteConst:
+                    case EX_Nothing:
+                    case EX_ObjectConst:
+                    case EX_FloatConst:
+                    case EX_StringConst:
+                    case EX_UnicodeStringConst:
+                    case EX_UInt64Const:
+                    case EX_Int64Const:
+                        break;
+                    case EX_CallMath e:
+                        {
+                            int i = 1;
+                            foreach (var param in e.Parameters)
+                            {
+                                exp($"arg_{i}", param);
+                                i++;
+                            }
+                            break;
+                        }
+                    case EX_LocalFinalFunction e:
+                        {
+                            int i = 1;
+                            foreach (var param in e.Parameters)
+                            {
+                                exp($"arg_{i}", param);
+                                i++;
+                            }
+                            break;
+                        }
+                    case EX_FinalFunction e:
+                        {
+                            int i = 1;
+                            foreach (var param in e.Parameters)
+                            {
+                                exp($"arg_{i}", param);
+                                i++;
+                            }
+                            break;
+                        }
+                    case EX_VirtualFunction e:
+                        {
+                            int i = 1;
+                            foreach (var param in e.Parameters)
+                            {
+                                exp($"arg_{i}", param);
+                                i++;
+                            }
+                            break;
+                        }
+                    case EX_Context e:
+                        {
+                            exp("context", e.ContextExpression);
+                            exp("object", e.ObjectExpression);
+                            break;
+                        }
+                    case EX_InterfaceContext e:
+                        {
+                            exp("interface", e.InterfaceValue);
+                            break;
+                        }
+                    default:
+                        Console.WriteLine($"unimplemented {ex}");
+                        break;
+                }
+
+                nodeMap.Add(ex, node);
+                NodeEditor.graph.Nodes.Add(node);
                 return node;
             }
 
