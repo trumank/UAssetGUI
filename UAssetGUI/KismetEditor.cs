@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using UAssetAPI.Kismet.Bytecode;
@@ -18,38 +17,18 @@ namespace UAssetGUI
 
         public KismetEditor()
         {
-            AutoScroll = true;
-
             NodeEditor = new NodesControl()
             {
                 Visible = true,
-                //AutoSize = true,
-                //Multiline = true,
-                //ReadOnly = true,
-                //BackgroundImage = Properties.Resources.grid,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Location = new System.Drawing.Point(0, 0),
                 Name = "nodesControl",
-                Size = new System.Drawing.Size(5000, 5000),
                 TabIndex = 0,
                 Context = null,
             };
 
             Controls.Add(NodeEditor);
-
-            // needed else panel content won't update until scroll end
-            Scroll += (sender, e) => {
-                switch (e.ScrollOrientation)
-                {
-                    case ScrollOrientation.VerticalScroll:
-                        VerticalScroll.Value = e.NewValue;
-                        break;
-                    case ScrollOrientation.HorizontalScroll:
-                        HorizontalScroll.Value = e.NewValue;
-                        break;
-                }
-            };
         }
-
 
         public class Value{}
         static Parameter PinExecute = new Parameter { Name = "execute", Direction = Direction.In, ParameterType = typeof(ExecutionPath) };
@@ -351,9 +330,6 @@ namespace UAssetGUI
                 var split = line.Split(' ');
                 switch (split[0])
                 {
-                    case "graph":
-                        NodeEditor.Size = new System.Drawing.Size((int) ((3 + float.Parse(split[2], CultureInfo.InvariantCulture)) * scaleX), (int) ((3 + float.Parse(split[3], CultureInfo.InvariantCulture)) * scaleY));
-                        break;
                     case "node":
                         var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
                         node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * scaleX;
