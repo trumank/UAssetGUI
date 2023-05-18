@@ -6,6 +6,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
+
+using UAssetAPI;
+using UAssetAPI.ExportTypes;
 using UAssetAPI.Kismet.Bytecode;
 using UAssetAPI.Kismet.Bytecode.Expressions;
 
@@ -44,8 +47,10 @@ namespace UAssetGUI
             internal uint InputIndex;
         }
 
-        public void SetBytecode(KismetExpression[] bytecode)
+        public void SetBytecode(UAsset asset, FunctionExport fn)
         {
+            var bytecode = fn.ScriptBytecode;
+
             NodeEditor.Clear();
 
             var offsets = GetOffsets(bytecode).ToDictionary(l => l.Item1, l => l.Item2);
@@ -53,6 +58,30 @@ namespace UAssetGUI
 
 
             var jumpConnections = new List<JumpConnection>();
+
+            NodeVisual BuildFunctionNode(FunctionExport fn, uint jump = 0)
+            {
+                var type = new CustomNodeType
+                {
+                    Name = fn.ObjectName.ToString(),
+                    Parameters = new List<Parameter>{},
+                };
+
+                var node = new NodeVisual()
+                {
+                    Type = type,
+                    Callable = false,
+                    ExecInit = false,
+                    Name = fn.ObjectName.ToString(),
+                    NodeColor = System.Drawing.Color.Salmon,
+                };
+
+                type.Parameters.Add(PinThen);
+                jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = jump });
+
+                NodeEditor.AddNode(node, false);
+                return node;
+            }
 
             NodeVisual BuildExecNode(uint index, KismetExpression ex)
             {
@@ -74,7 +103,6 @@ namespace UAssetGUI
                     Callable = false,
                     ExecInit = false,
                     Name = $"{index}: {name}",
-                    Order = NodeEditor.graph.Nodes.Count,
                 };
 
                 void exec()
@@ -159,7 +187,6 @@ namespace UAssetGUI
                     Callable = false,
                     ExecInit = false,
                     Name = type.Name,
-                    Order = NodeEditor.graph.Nodes.Count,
                 };
 
                 type.Parameters.Add(PinOutValue);
@@ -255,6 +282,29 @@ namespace UAssetGUI
                 return node;
             }
 
+            BuildFunctionNode(fn);
+
+            if (fn.ObjectName.ToString().StartsWith("ExecuteUbergraph"))
+            {
+                foreach (var export in asset.Exports)
+                {
+                    if (export is FunctionExport f)
+                    {
+                        foreach (var ex in f.ScriptBytecode)
+                        {
+                            if (ex is EX_FinalFunction ff
+                                    && ff.StackNode.IsExport()
+                                    && ff.StackNode.ToExport(asset) == fn
+                                    && ff.Parameters.Length == 1
+                                    && ff.Parameters[0] is EX_IntConst j)
+                            {
+                                BuildFunctionNode(f, (uint) j.Value);
+                            }
+                        }
+                    }
+                }
+            }
+
             uint index = 0;
             foreach (var ex in bytecode)
             {
@@ -308,6 +358,7 @@ namespace UAssetGUI
 
                 var dot = p.StandardInput;
 
+                var functionNodes = new List<int>();
                 dot.WriteLine("strict digraph {");
                 dot.WriteLine("rankdir=\"LR\"");
                 var nodeDict = NodeEditor.graph.Nodes.Select((v, i) => (v, i)).ToDictionary(p => p.v, p => p.i);
@@ -316,12 +367,25 @@ namespace UAssetGUI
                     var inputs = String.Join(" | ", entry.Key.GetInputs().Select(p => $"<{p.Name}>{p.Name}"));
                     var outputs = String.Join(" | ", entry.Key.GetOutputs().Select(p => $"<{p.Name}>{p.Name}"));
                     dot.WriteLine($"{entry.Value} [shape=\"record\", width=4, label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
+                    if (entry.Key.NodeColor == System.Drawing.Color.Salmon) // TODO possibly worst way to detect special nodes ever
+                    {
+                        functionNodes.Add(entry.Value);
+                    }
                 }
                 foreach (var conn in NodeEditor.graph.Connections)
                 {
                     var weight = conn.GetType() == typeof(ExecutionPath) ? 3 : 1; // can't tell if this is actually doing anything
                     dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w [weight = {weight}]");
                 }
+
+                dot.WriteLine("{");
+                dot.WriteLine("rank = \"source\";");
+                foreach (var fn in functionNodes)
+                {
+                    dot.WriteLine(fn);
+                }
+                dot.WriteLine("}");
+
                 dot.WriteLine("}");
                 dot.Close();
 
