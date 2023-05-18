@@ -192,7 +192,7 @@ namespace UAssetGUI
                     case EX_UnicodeStringConst:
                     case EX_UInt64Const:
                     case EX_Int64Const:
-                        type.CustomEditor = typeof(TextBox);
+                        //type.CustomEditor = typeof(TextBox);
                         break;
                     case EX_CallMath e:
                         {
