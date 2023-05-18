@@ -1,6 +1,7 @@
 using NodeEditor;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -295,51 +296,59 @@ namespace UAssetGUI
 
         public void LayoutNodes()
         {
-            var info = new ProcessStartInfo("graphviz/dot.exe");
-            info.Arguments = "-Tplain -y";
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true;
-            info.RedirectStandardOutput = true;
-            info.RedirectStandardInput = true;
-            var p = Process.Start(info);
-
-            var dot = p.StandardInput;
-
-            dot.WriteLine("strict digraph {");
-            dot.WriteLine("rankdir=\"LR\"");
-            var nodeDict = NodeEditor.graph.Nodes.Select((v, i) => (v, i)).ToDictionary(p => p.v, p => p.i);
-            foreach (var entry in nodeDict)
+            try
             {
-                var inputs = String.Join(" | ", entry.Key.GetInputs().Select(p => $"<{p.Name}>{p.Name}"));
-                var outputs = String.Join(" | ", entry.Key.GetOutputs().Select(p => $"<{p.Name}>{p.Name}"));
-                dot.WriteLine($"{entry.Value} [shape=\"record\", width=4, label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
-            }
-            foreach (var conn in NodeEditor.graph.Connections)
-            {
-                var weight = conn.GetType() == typeof(ExecutionPath) ? 3 : 1; // can't tell if this is actually doing anything
-                dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w [weight = {weight}]");
-            }
-            dot.WriteLine("}");
-            dot.Close();
+                var info = new ProcessStartInfo("graphviz/dot.exe");
+                info.Arguments = "-Tplain -y";
+                info.UseShellExecute = false;
+                info.CreateNoWindow = true;
+                info.RedirectStandardOutput = true;
+                info.RedirectStandardInput = true;
+                var p = Process.Start(info);
 
-            var scaleX = 50.0f;
-            var scaleY = 80.0f;
-            string line;
-            while ((line = p.StandardOutput.ReadLine()) != null)
-            {
-                var split = line.Split(' ');
-                switch (split[0])
+                var dot = p.StandardInput;
+
+                dot.WriteLine("strict digraph {");
+                dot.WriteLine("rankdir=\"LR\"");
+                var nodeDict = NodeEditor.graph.Nodes.Select((v, i) => (v, i)).ToDictionary(p => p.v, p => p.i);
+                foreach (var entry in nodeDict)
                 {
-                    case "node":
-                        var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
-                        node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * scaleX;
-                        node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * scaleY;
-                        node.LayoutEditor(NodeEditor.Zoom);
-                        break;
+                    var inputs = String.Join(" | ", entry.Key.GetInputs().Select(p => $"<{p.Name}>{p.Name}"));
+                    var outputs = String.Join(" | ", entry.Key.GetOutputs().Select(p => $"<{p.Name}>{p.Name}"));
+                    dot.WriteLine($"{entry.Value} [shape=\"record\", width=4, label=\"{{{{ {{{entry.Key.Name}}} | {{ {{ {inputs} }} | {{ {outputs} }} }} | footer }}}}\"]");
                 }
-            }
+                foreach (var conn in NodeEditor.graph.Connections)
+                {
+                    var weight = conn.GetType() == typeof(ExecutionPath) ? 3 : 1; // can't tell if this is actually doing anything
+                    dot.WriteLine($"{nodeDict[conn.OutputNode]}:{conn.OutputSocketName}:e -> {nodeDict[conn.InputNode]}:{conn.InputSocketName}:w [weight = {weight}]");
+                }
+                dot.WriteLine("}");
+                dot.Close();
 
-            p.WaitForExit();
+                var scaleX = 50.0f;
+                var scaleY = 80.0f;
+                string line;
+                while ((line = p.StandardOutput.ReadLine()) != null)
+                {
+                    var split = line.Split(' ');
+                    switch (split[0])
+                    {
+                        case "node":
+                            var node = NodeEditor.graph.Nodes[Int32.Parse(split[1])];
+                            node.X = float.Parse(split[2], CultureInfo.InvariantCulture) * scaleX;
+                            node.Y = float.Parse(split[3], CultureInfo.InvariantCulture) * scaleY;
+                            node.LayoutEditor(NodeEditor.Zoom);
+                            break;
+                    }
+                }
+
+                p.WaitForExit();
+            }
+            catch (Win32Exception e)
+            {
+                Console.WriteLine("Failed to find and start 'dot' (Graphviz), nodes will not be laid out");
+                Console.WriteLine(e);
+            }
         }
 
         public static IEnumerable<(uint, KismetExpression)> GetOffsets(KismetExpression[] bytecode) {
