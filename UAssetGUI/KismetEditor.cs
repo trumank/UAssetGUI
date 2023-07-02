@@ -33,12 +33,10 @@ namespace UAssetGUI
         {
             Size = new System.Drawing.Size(574, 401);
             MakeCurrent();
-            controller = new ImGuiController(100, 100);
+            controller = new ImGuiController(this);
             ImNodes.Initialize();
             ImNodes.SetImGuiContext(controller.context);
 
-            //InitializeComponent();
-            //KeyDown += OnKeyDown;
             SetStyle(ControlStyles.Selectable, true);
             myTimer.AutoReset = true;
             myTimer.Elapsed += (Object obj, ElapsedEventArgs args) => {
@@ -83,7 +81,7 @@ namespace UAssetGUI
 
             CheckResize();
 
-            controller.Update(this, 3);
+            controller.Update();
 
             GL.ClearColor(new Color4(0, 32, 48, 255));
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit);
@@ -151,7 +149,6 @@ namespace UAssetGUI
                 ImNodes.Link(i, link.Item1, link.Item2);
                 i++;
             }
-
 
             ImNodes.EndNodeEditor();
 

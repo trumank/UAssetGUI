@@ -43,13 +43,24 @@ namespace UAssetAPI
 
         public IntPtr context;
 
+        private Control control;
+        private Stopwatch stopwatch = new Stopwatch();
+
         /// <summary>
         /// Constructs a new ImGuiController.
         /// </summary>
-        public ImGuiController(int width, int height)
+        public ImGuiController(Control control)
         {
-            _windowWidth = width;
-            _windowHeight = height;
+            this.control = control;
+
+            _windowWidth = Math.Max(1, control.Width);
+            _windowHeight = Math.Max(1, control.Height);
+
+            control.KeyDown += OnKeyDown;
+            control.KeyUp += OnKeyUp;
+            control.KeyPress += OnKeyPress;
+            control.MouseWheel += OnMouseWheel;
+            control.LostFocus += OnLostFocus;
 
             int major = GL.GetInteger(GetPName.MajorVersion);
             int minor = GL.GetInteger(GetPName.MinorVersion);
@@ -71,6 +82,30 @@ namespace UAssetAPI
 
             ImGui.NewFrame();
             _frameBegun = true;
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs args)
+        {
+            ImGui.GetIO().KeysDown[args.KeyValue] = true;
+        }
+        private void OnKeyUp(object sender, KeyEventArgs args)
+        {
+            ImGui.GetIO().KeysDown[args.KeyValue] = false;
+        }
+        private void OnKeyPress(object sender, System.Windows.Forms.KeyPressEventArgs args)
+        {
+            PressChar(args.KeyChar);
+        }
+        private void OnMouseWheel(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            ImGuiIOPtr io = ImGui.GetIO();
+            io.MouseWheel = e.Delta / SystemInformation.MouseWheelScrollDelta;
+        }
+        private void OnLostFocus(object sender, EventArgs e)
+        {
+            var keysDown = ImGui.GetIO().KeysDown;
+            for (var i = 0; i < keysDown.Count; i++)
+                keysDown[i] = false;
         }
 
         public void WindowResized(int width, int height)
@@ -214,15 +249,16 @@ void main()
         /// <summary>
         /// Updates ImGui input and IO configuration state.
         /// </summary>
-        public void Update(Control control, float deltaSeconds)
+        public void Update()
         {
             if (_frameBegun)
             {
                 ImGui.Render();
             }
 
-            SetPerFrameImGuiData(deltaSeconds);
-            UpdateImGuiInput(control);
+            SetPerFrameImGuiData((float) stopwatch.Elapsed.TotalMilliseconds / 1000);
+            stopwatch.Restart();
+            UpdateImGuiInput();
 
             _frameBegun = true;
             ImGui.NewFrame();
@@ -244,12 +280,9 @@ void main()
 
         readonly List<char> PressedChars = new List<char>();
 
-        private void UpdateImGuiInput(Control control)
+        private void UpdateImGuiInput()
         {
             ImGuiIOPtr io = ImGui.GetIO();
-
-            //MouseState MouseState = wnd.MouseState;
-            //KeyboardState KeyboardState = wnd.KeyboardState;
 
             io.MouseDown[0] = Control.MouseButtons == MouseButtons.Left;
             io.MouseDown[1] = Control.MouseButtons == MouseButtons.Right;
@@ -257,27 +290,15 @@ void main()
 
             var clientPos = control.PointToClient(Control.MousePosition);
             io.MousePos = new System.Numerics.Vector2(clientPos.X, clientPos.Y);
-            /*
-            foreach (Keys key in Enum.GetValues(typeof(Keys)))
-            {
-                if (key == Keys.Unknown)
-                {
-                    continue;
-                }
-                io.KeysDown[(int)key] = KeyboardState.IsKeyDown(key);
-            }
 
             foreach (var c in PressedChars)
-            {
                 io.AddInputCharacter(c);
-            }
             PressedChars.Clear();
 
-            io.KeyCtrl = KeyboardState.IsKeyDown(Keys.LeftControl) || KeyboardState.IsKeyDown(Keys.RightControl);
-            io.KeyAlt = KeyboardState.IsKeyDown(Keys.LeftAlt) || KeyboardState.IsKeyDown(Keys.RightAlt);
-            io.KeyShift = KeyboardState.IsKeyDown(Keys.LeftShift) || KeyboardState.IsKeyDown(Keys.RightShift);
-            io.KeySuper = KeyboardState.IsKeyDown(Keys.LeftSuper) || KeyboardState.IsKeyDown(Keys.RightSuper);
-            */
+            io.KeyCtrl = 0 != (Control.ModifierKeys & Keys.Control);
+            io.KeyAlt = 0 != (Control.ModifierKeys & Keys.Alt);
+            io.KeyShift = 0 != (Control.ModifierKeys & Keys.Shift);
+            io.KeySuper = 0 != (Control.ModifierKeys & (Keys.LWin | Keys.RWin));
         }
 
         internal void PressChar(char keyChar)
@@ -285,19 +306,8 @@ void main()
             PressedChars.Add(keyChar);
         }
 
-/*
-        internal void MouseScroll(Vector2 offset)
-        {
-            ImGuiIOPtr io = ImGui.GetIO();
-            
-            io.MouseWheel = offset.Y;
-            io.MouseWheelH = offset.X;
-        }
-        */
-
         private static void SetKeyMappings()
         {
-            /*
             ImGuiIOPtr io = ImGui.GetIO();
             io.KeyMap[(int)ImGuiKey.Tab] = (int)Keys.Tab;
             io.KeyMap[(int)ImGuiKey.LeftArrow] = (int)Keys.Left;
@@ -308,17 +318,102 @@ void main()
             io.KeyMap[(int)ImGuiKey.PageDown] = (int)Keys.PageDown;
             io.KeyMap[(int)ImGuiKey.Home] = (int)Keys.Home;
             io.KeyMap[(int)ImGuiKey.End] = (int)Keys.End;
+            io.KeyMap[(int)ImGuiKey.Insert] = (int)Keys.Insert;
             io.KeyMap[(int)ImGuiKey.Delete] = (int)Keys.Delete;
-            io.KeyMap[(int)ImGuiKey.Backspace] = (int)Keys.Backspace;
+            io.KeyMap[(int)ImGuiKey.Backspace] = (int)Keys.Back;
+            io.KeyMap[(int)ImGuiKey.Space] = (int)Keys.Space;
             io.KeyMap[(int)ImGuiKey.Enter] = (int)Keys.Enter;
             io.KeyMap[(int)ImGuiKey.Escape] = (int)Keys.Escape;
+            io.KeyMap[(int)ImGuiKey.LeftCtrl] = (int)Keys.LControlKey;
+            io.KeyMap[(int)ImGuiKey.LeftShift] = (int)Keys.LShiftKey;
+            io.KeyMap[(int)ImGuiKey.LeftAlt] = (int)Keys.LMenu;
+            io.KeyMap[(int)ImGuiKey.LeftSuper] = (int)Keys.LWin;
+            io.KeyMap[(int)ImGuiKey.RightCtrl] = (int)Keys.RControlKey;
+            io.KeyMap[(int)ImGuiKey.RightShift] = (int)Keys.RShiftKey;
+            io.KeyMap[(int)ImGuiKey.RightAlt] = (int)Keys.RMenu;
+            io.KeyMap[(int)ImGuiKey.RightSuper] = (int)Keys.RWin;
+            io.KeyMap[(int)ImGuiKey.Menu] = (int)Keys.Menu;
+            io.KeyMap[(int)ImGuiKey._0] = (int)Keys.D0;
+            io.KeyMap[(int)ImGuiKey._1] = (int)Keys.D1;
+            io.KeyMap[(int)ImGuiKey._2] = (int)Keys.D2;
+            io.KeyMap[(int)ImGuiKey._3] = (int)Keys.D3;
+            io.KeyMap[(int)ImGuiKey._4] = (int)Keys.D4;
+            io.KeyMap[(int)ImGuiKey._5] = (int)Keys.D5;
+            io.KeyMap[(int)ImGuiKey._6] = (int)Keys.D6;
+            io.KeyMap[(int)ImGuiKey._7] = (int)Keys.D7;
+            io.KeyMap[(int)ImGuiKey._8] = (int)Keys.D8;
+            io.KeyMap[(int)ImGuiKey._9] = (int)Keys.D9;
             io.KeyMap[(int)ImGuiKey.A] = (int)Keys.A;
+            io.KeyMap[(int)ImGuiKey.B] = (int)Keys.B;
             io.KeyMap[(int)ImGuiKey.C] = (int)Keys.C;
+            io.KeyMap[(int)ImGuiKey.D] = (int)Keys.D;
+            io.KeyMap[(int)ImGuiKey.E] = (int)Keys.E;
+            io.KeyMap[(int)ImGuiKey.F] = (int)Keys.F;
+            io.KeyMap[(int)ImGuiKey.G] = (int)Keys.G;
+            io.KeyMap[(int)ImGuiKey.H] = (int)Keys.H;
+            io.KeyMap[(int)ImGuiKey.I] = (int)Keys.I;
+            io.KeyMap[(int)ImGuiKey.J] = (int)Keys.J;
+            io.KeyMap[(int)ImGuiKey.K] = (int)Keys.K;
+            io.KeyMap[(int)ImGuiKey.L] = (int)Keys.L;
+            io.KeyMap[(int)ImGuiKey.M] = (int)Keys.M;
+            io.KeyMap[(int)ImGuiKey.N] = (int)Keys.N;
+            io.KeyMap[(int)ImGuiKey.O] = (int)Keys.O;
+            io.KeyMap[(int)ImGuiKey.P] = (int)Keys.P;
+            io.KeyMap[(int)ImGuiKey.Q] = (int)Keys.Q;
+            io.KeyMap[(int)ImGuiKey.R] = (int)Keys.R;
+            io.KeyMap[(int)ImGuiKey.S] = (int)Keys.S;
+            io.KeyMap[(int)ImGuiKey.T] = (int)Keys.T;
+            io.KeyMap[(int)ImGuiKey.U] = (int)Keys.U;
             io.KeyMap[(int)ImGuiKey.V] = (int)Keys.V;
+            io.KeyMap[(int)ImGuiKey.W] = (int)Keys.W;
             io.KeyMap[(int)ImGuiKey.X] = (int)Keys.X;
             io.KeyMap[(int)ImGuiKey.Y] = (int)Keys.Y;
             io.KeyMap[(int)ImGuiKey.Z] = (int)Keys.Z;
-            */
+            io.KeyMap[(int)ImGuiKey.F1] = (int)Keys.F1;
+            io.KeyMap[(int)ImGuiKey.F2] = (int)Keys.F2;
+            io.KeyMap[(int)ImGuiKey.F3] = (int)Keys.F3;
+            io.KeyMap[(int)ImGuiKey.F4] = (int)Keys.F4;
+            io.KeyMap[(int)ImGuiKey.F5] = (int)Keys.F5;
+            io.KeyMap[(int)ImGuiKey.F6] = (int)Keys.F6;
+            io.KeyMap[(int)ImGuiKey.F7] = (int)Keys.F7;
+            io.KeyMap[(int)ImGuiKey.F8] = (int)Keys.F8;
+            io.KeyMap[(int)ImGuiKey.F9] = (int)Keys.F9;
+            io.KeyMap[(int)ImGuiKey.F10] = (int)Keys.F10;
+            io.KeyMap[(int)ImGuiKey.F11] = (int)Keys.F11;
+            io.KeyMap[(int)ImGuiKey.F12] = (int)Keys.F12;
+            io.KeyMap[(int)ImGuiKey.Apostrophe] = (int)Keys.OemQuotes;
+            io.KeyMap[(int)ImGuiKey.Comma] = (int)Keys.Oemcomma;
+            io.KeyMap[(int)ImGuiKey.Minus] = (int)Keys.OemMinus;
+            io.KeyMap[(int)ImGuiKey.Period] = (int)Keys.OemPeriod;
+            io.KeyMap[(int)ImGuiKey.Slash] = (int)Keys.OemQuestion;
+            io.KeyMap[(int)ImGuiKey.Semicolon] = (int)Keys.OemSemicolon;
+            io.KeyMap[(int)ImGuiKey.Equal] = (int)Keys.Oemplus;
+            io.KeyMap[(int)ImGuiKey.LeftBracket] = (int)Keys.OemOpenBrackets;
+            io.KeyMap[(int)ImGuiKey.Backslash] = (int)Keys.OemBackslash;
+            io.KeyMap[(int)ImGuiKey.RightBracket] = (int)Keys.OemCloseBrackets;
+            io.KeyMap[(int)ImGuiKey.GraveAccent] = (int)Keys.Oemtilde;
+            io.KeyMap[(int)ImGuiKey.CapsLock] = (int)Keys.CapsLock;
+            io.KeyMap[(int)ImGuiKey.ScrollLock] = (int)Keys.Scroll;
+            io.KeyMap[(int)ImGuiKey.NumLock] = (int)Keys.NumLock;
+            io.KeyMap[(int)ImGuiKey.PrintScreen] = (int)Keys.PrintScreen;
+            io.KeyMap[(int)ImGuiKey.Pause] = (int)Keys.Pause;
+            io.KeyMap[(int)ImGuiKey.Keypad0] = (int)Keys.NumPad0;
+            io.KeyMap[(int)ImGuiKey.Keypad1] = (int)Keys.NumPad1;
+            io.KeyMap[(int)ImGuiKey.Keypad2] = (int)Keys.NumPad2;
+            io.KeyMap[(int)ImGuiKey.Keypad3] = (int)Keys.NumPad3;
+            io.KeyMap[(int)ImGuiKey.Keypad4] = (int)Keys.NumPad4;
+            io.KeyMap[(int)ImGuiKey.Keypad5] = (int)Keys.NumPad5;
+            io.KeyMap[(int)ImGuiKey.Keypad6] = (int)Keys.NumPad6;
+            io.KeyMap[(int)ImGuiKey.Keypad7] = (int)Keys.NumPad7;
+            io.KeyMap[(int)ImGuiKey.Keypad8] = (int)Keys.NumPad8;
+            io.KeyMap[(int)ImGuiKey.Keypad9] = (int)Keys.NumPad9;
+            io.KeyMap[(int)ImGuiKey.KeypadDecimal] = (int)Keys.Decimal;
+            io.KeyMap[(int)ImGuiKey.KeypadDivide] = (int)Keys.Divide;
+            io.KeyMap[(int)ImGuiKey.KeypadMultiply] = (int)Keys.Multiply;
+            io.KeyMap[(int)ImGuiKey.KeypadSubtract] = (int)Keys.Subtract;
+            io.KeyMap[(int)ImGuiKey.KeypadAdd] = (int)Keys.Add;
+            io.KeyMap[(int)ImGuiKey.KeypadEnter] = (int)Keys.Enter;
+            //io.KeyMap[(int)ImGuiKey.KeypadEqual] = (int)Keys.Equal;
         }
 
         private void RenderImDrawData(ImDrawDataPtr draw_data)
