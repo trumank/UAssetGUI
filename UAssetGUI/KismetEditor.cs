@@ -31,6 +31,7 @@ namespace UAssetGUI
 
         public ImNodesControl() : base(new GraphicsMode(32, 24, 8, 8))
         {
+            Size = new System.Drawing.Size(574, 401);
             MakeCurrent();
             controller = new ImGuiController(100, 100);
             ImNodes.Initialize();
@@ -59,15 +60,8 @@ namespace UAssetGUI
         internal void CheckResize()
         {
             if (ClientSize == lastSize) return;
-
-            Console.WriteLine(ClientSize);
-            //if (ClientSize.Height == 0)
-                //ClientSize = new System.Drawing.Size(ClientSize.Width, 1);
-
             GL.Viewport(0, 0, ClientSize.Width, ClientSize.Height);
-
             controller.WindowResized(ClientSize.Width, ClientSize.Height);
-
             lastSize = ClientSize;
         }
 
@@ -189,10 +183,9 @@ namespace UAssetGUI
             NodeEditor = new ImNodesControl()
             {
                 Visible = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Dock = DockStyle.Fill,
                 Name = "nodesControl",
                 TabIndex = 0,
-                //Context = null,
             };
             this.BackColor = Color.Cyan;
 
