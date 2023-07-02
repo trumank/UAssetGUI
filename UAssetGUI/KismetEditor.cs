@@ -7,28 +7,200 @@ using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+using ImGuiNET;
+using ImNodes = imnodesNET.imnodes;
+
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.Kismet.Bytecode;
 using UAssetAPI.Kismet.Bytecode.Expressions;
+using System.Drawing;
+using System.Timers;
 
 namespace UAssetGUI
 {
 
+    public class ImNodesControl : GLControl {
+        ImGuiController controller;
+        System.Timers.Timer myTimer = new System.Timers.Timer(1000/144);
+        float number;
+        List<Tuple<int, int>> links = new List<Tuple<int, int>>();
+
+        public ImNodesControl() : base(new GraphicsMode(32, 24, 8, 8))
+        {
+            MakeCurrent();
+            controller = new ImGuiController(100, 100);
+            ImNodes.Initialize();
+            ImNodes.SetImGuiContext(controller.context);
+
+            //InitializeComponent();
+            //KeyDown += OnKeyDown;
+            SetStyle(ControlStyles.Selectable, true);
+            myTimer.AutoReset = true;
+            myTimer.Elapsed += (Object obj, ElapsedEventArgs args) => {
+                Invalidate();
+            };
+            myTimer.Start();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 7)
+            {
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        internal Size lastSize = Size.Empty;
+        internal void CheckResize()
+        {
+            if (ClientSize == lastSize) return;
+
+            if (ClientSize.Height == 0)
+                ClientSize = new System.Drawing.Size(ClientSize.Width, 1);
+
+            GL.Viewport(0, 0, ClientSize.Width, ClientSize.Height);
+
+            //GL.MatrixMode(MatrixMode.Projection);
+            //GL.LoadIdentity();
+            //GL.Ortho(0, ClientSize.Width, ClientSize.Height, 0, 0, 1);
+            controller.WindowResized(ClientSize.Width, ClientSize.Height);
+
+            lastSize = ClientSize;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            MakeCurrent();
+
+            CheckResize();
+
+            //GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+            //GL.Enable(EnableCap.Blend);
+
+            //GL.ClearColor(Color4.MidnightBlue);
+
+            //GL.Clear(ClearBufferMask.ColorBufferBit);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            MakeCurrent();
+
+            var sw = new Stopwatch();
+            sw.Start();
+
+            MakeCurrent();
+
+            CheckResize();
+
+            controller.Update(this, 3);
+
+            GL.ClearColor(new Color4(0, 32, 48, 255));
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit);
+
+            ImGui.ShowDemoWindow();
+
+            ImNodes.BeginNodeEditor();
+
+            {
+                ImNodes.BeginNode(1);
+                ImNodes.BeginNodeTitleBar();
+                ImGui.Text("asdf");
+                ImNodes.EndNodeTitleBar();
+
+                ImGui.BeginGroup();
+
+                ImNodes.BeginInputAttribute(2);
+                ImGui.Text("number");
+                ImGui.SameLine();
+                ImGui.PushItemWidth(100.0f);
+                ImGui.DragFloat("##hidelabel", ref number);
+                ImGui.PopItemWidth();
+                ImNodes.EndInputAttribute();
+
+                ImGui.SameLine();
+
+                ImNodes.BeginOutputAttribute(3);
+                ImGui.Text("output pin");
+                ImNodes.EndOutputAttribute();
+
+                ImGui.EndGroup();
+
+                ImNodes.EndNode();
+            }
+            {
+                ImNodes.BeginNode(9);
+
+                ImNodes.BeginNodeTitleBar();
+                ImGui.Text("asdf");
+                ImNodes.EndNodeTitleBar();
+
+                ImNodes.BeginInputAttribute(4);
+                ImGui.Text("number");
+                ImGui.SameLine();
+                ImGui.PushItemWidth(100.0f);
+                ImGui.DragFloat("##hidelabel", ref number);
+                ImGui.PopItemWidth();
+                ImNodes.EndInputAttribute();
+
+                ImGui.SameLine();
+
+
+                ImNodes.BeginOutputAttribute(5);
+                ImGui.Text("output pin");
+                ImNodes.EndOutputAttribute();
+
+                ImNodes.EndNode();
+            }
+
+            var i = 0;
+            foreach (var link in links) {
+                ImNodes.Link(i, link.Item1, link.Item2);
+                i++;
+            }
+
+
+            ImNodes.EndNodeEditor();
+
+            int startAttribute = 0, endAttribute = 0;
+            if (ImNodes.IsLinkCreated(ref startAttribute, ref endAttribute) && startAttribute != endAttribute) {
+                links.Add(new Tuple<int, int>(startAttribute, endAttribute));
+            }
+
+            ImGui.End();
+
+
+
+            // draw
+
+            controller.Render();
+
+            SwapBuffers();
+
+            sw.Stop();
+            //Console.WriteLine($"paint took {sw.ElapsedMilliseconds}ms");
+        }
+    }
+
     public class KismetEditor : Panel
     {
-        public NodesControl NodeEditor;
+        public ImNodesControl NodeEditor;
 
         public KismetEditor()
         {
-            NodeEditor = new NodesControl()
+            NodeEditor = new ImNodesControl()
             {
                 Visible = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 Location = new System.Drawing.Point(0, 0),
                 Name = "nodesControl",
                 TabIndex = 0,
-                Context = null,
+                //Context = null,
             };
 
             Controls.Add(NodeEditor);
@@ -51,7 +223,7 @@ namespace UAssetGUI
         {
             var bytecode = fn.ScriptBytecode;
 
-            NodeEditor.Clear();
+            //NodeEditor.Clear();
 
             var offsets = GetOffsets(bytecode).ToDictionary(l => l.Item1, l => l.Item2);
             var nodeMap = new Dictionary<KismetExpression, NodeVisual>();
@@ -79,7 +251,7 @@ namespace UAssetGUI
                 type.Parameters.Add(PinThen);
                 jumpConnections.Add(new JumpConnection { OutputNode = node, OutputPin = "then", InputIndex = jump });
 
-                NodeEditor.AddNode(node, false);
+                //NodeEditor.AddNode(node, false);
                 return node;
             }
 
@@ -122,7 +294,7 @@ namespace UAssetGUI
                 {
                     type.Parameters.Add(new Parameter { Name = name, Direction = Direction.In, ParameterType = typeof(Value) });
                     var variable = BuildExpressionNode(ex);
-                    NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
+                    //NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
                 }
 
                 switch (ex)
@@ -169,7 +341,7 @@ namespace UAssetGUI
                 };
 
                 nodeMap.Add(ex, node);
-                NodeEditor.AddNode(node, false);
+                //NodeEditor.AddNode(node, false);
                 return node;
             }
 
@@ -195,7 +367,7 @@ namespace UAssetGUI
                 {
                     var variable = BuildExpressionNode(ex);
                     type.Parameters.Add(new Parameter { Name = name, Direction = Direction.In, ParameterType = typeof(Value) });
-                    NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
+                    //NodeEditor.graph.Connections.Add(new NodeConnection { OutputNode = variable, OutputSocketName = "out", InputNode = node, InputSocketName = name });
                 }
 
                 switch (ex)
@@ -278,7 +450,7 @@ namespace UAssetGUI
                 }
 
                 nodeMap.Add(ex, node);
-                NodeEditor.AddNode(node, false);
+                //NodeEditor.AddNode(node, false);
                 return node;
             }
 
@@ -335,15 +507,16 @@ namespace UAssetGUI
                 };
                 //Console.WriteLine($"{jump.OutputNode} {node}");
                 //Console.WriteLine($"{conn.OutputSocket} {conn.InputSocket}");
-                NodeEditor.graph.Connections.Add(conn);
+                //NodeEditor.graph.Connections.Add(conn);
             }
 
-            LayoutNodes();
+            //LayoutNodes();
 
-            NodeEditor.Refresh();
-            NodeEditor.needRepaint = true;
+            //NodeEditor.Refresh();
+            //NodeEditor.needRepaint = true;
         }
 
+        /*
         public void LayoutNodes()
         {
             try
@@ -414,6 +587,7 @@ namespace UAssetGUI
                 Console.WriteLine(e);
             }
         }
+        */
 
         public static IEnumerable<(uint, KismetExpression)> GetOffsets(KismetExpression[] bytecode) {
             var offsets = new List<(uint, KismetExpression)>();
