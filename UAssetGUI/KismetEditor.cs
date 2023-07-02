@@ -60,14 +60,12 @@ namespace UAssetGUI
         {
             if (ClientSize == lastSize) return;
 
-            if (ClientSize.Height == 0)
-                ClientSize = new System.Drawing.Size(ClientSize.Width, 1);
+            Console.WriteLine(ClientSize);
+            //if (ClientSize.Height == 0)
+                //ClientSize = new System.Drawing.Size(ClientSize.Width, 1);
 
             GL.Viewport(0, 0, ClientSize.Width, ClientSize.Height);
 
-            //GL.MatrixMode(MatrixMode.Projection);
-            //GL.LoadIdentity();
-            //GL.Ortho(0, ClientSize.Width, ClientSize.Height, 0, 0, 1);
             controller.WindowResized(ClientSize.Width, ClientSize.Height);
 
             lastSize = ClientSize;
@@ -78,13 +76,6 @@ namespace UAssetGUI
             MakeCurrent();
 
             CheckResize();
-
-            //GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-            //GL.Enable(EnableCap.Blend);
-
-            //GL.ClearColor(Color4.MidnightBlue);
-
-            //GL.Clear(ClearBufferMask.ColorBufferBit);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -103,7 +94,10 @@ namespace UAssetGUI
             GL.ClearColor(new Color4(0, 32, 48, 255));
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit);
 
-            ImGui.ShowDemoWindow();
+            ImGui.SetNextWindowPos(new System.Numerics.Vector2(0,0));
+            ImGui.SetNextWindowSize(ImGui.GetIO().DisplaySize);
+            ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0);
+            ImGui.Begin("nodes", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoBringToFrontOnFocus);
 
             ImNodes.BeginNodeEditor();
 
@@ -173,10 +167,9 @@ namespace UAssetGUI
             }
 
             ImGui.End();
+            ImGui.PopStyleVar(2);
 
-
-
-            // draw
+            ImGui.ShowDemoWindow();
 
             controller.Render();
 
@@ -197,11 +190,11 @@ namespace UAssetGUI
             {
                 Visible = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                Location = new System.Drawing.Point(0, 0),
                 Name = "nodesControl",
                 TabIndex = 0,
                 //Context = null,
             };
+            this.BackColor = Color.Cyan;
 
             Controls.Add(NodeEditor);
         }
