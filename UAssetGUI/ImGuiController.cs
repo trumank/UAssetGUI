@@ -59,6 +59,9 @@ namespace UAssetAPI
             control.KeyDown += OnKeyDown;
             control.KeyUp += OnKeyUp;
             control.KeyPress += OnKeyPress;
+            control.MouseDown += OnMouseDown;
+            control.MouseUp += OnMouseUp;
+            control.MouseMove += OnMouseMove;
             control.MouseWheel += OnMouseWheel;
             control.LostFocus += OnLostFocus;
 
@@ -84,28 +87,59 @@ namespace UAssetAPI
             _frameBegun = true;
         }
 
+        private void OnMouseUp(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            var io = ImGui.GetIO();
+            io.AddMousePosEvent(e.X, e.Y);
+            var index = e.Button switch
+            {
+                MouseButtons.Left => 0,
+                MouseButtons.Right => 1,
+                MouseButtons.Middle => 2,
+                _ => -1,
+            };
+            if (index != -1) io.AddMouseButtonEvent(index, false);
+        }
+
+        private void OnMouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            var io = ImGui.GetIO();
+            io.AddMousePosEvent(e.X, e.Y);
+            var index = e.Button switch
+            {
+                MouseButtons.Left => 0,
+                MouseButtons.Right => 1,
+                MouseButtons.Middle => 2,
+                _ => -1,
+            };
+            if (index != -1) io.AddMouseButtonEvent(index, true);
+        }
+
+        private void OnMouseMove(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            ImGui.GetIO().AddMousePosEvent(e.X, e.Y);
+        }
+
         private void OnKeyDown(object sender, KeyEventArgs args)
         {
-            ImGui.GetIO().KeysDown[args.KeyValue] = true;
+            ImGui.GetIO().AddKeyEvent((ImGuiKey)args.KeyValue, true);
         }
         private void OnKeyUp(object sender, KeyEventArgs args)
         {
-            ImGui.GetIO().KeysDown[args.KeyValue] = false;
+            ImGui.GetIO().AddKeyEvent((ImGuiKey)args.KeyValue, false);
         }
         private void OnKeyPress(object sender, System.Windows.Forms.KeyPressEventArgs args)
         {
-            PressChar(args.KeyChar);
+            ImGui.GetIO().AddInputCharacter(args.KeyChar);
         }
         private void OnMouseWheel(object sender, System.Windows.Forms.MouseEventArgs e)
         {
             ImGuiIOPtr io = ImGui.GetIO();
-            io.MouseWheel = e.Delta / SystemInformation.MouseWheelScrollDelta;
+            io.AddMouseWheelEvent(0, e.Delta / SystemInformation.MouseWheelScrollDelta);
         }
         private void OnLostFocus(object sender, EventArgs e)
         {
-            var keysDown = ImGui.GetIO().KeysDown;
-            for (var i = 0; i < keysDown.Count; i++)
-                keysDown[i] = false;
+            ImGui.GetIO().ClearInputKeys();
         }
 
         public void WindowResized(int width, int height)
@@ -278,32 +312,13 @@ void main()
             io.DeltaTime = deltaSeconds; // DeltaTime is in seconds.
         }
 
-        readonly List<char> PressedChars = new List<char>();
-
         private void UpdateImGuiInput()
         {
             ImGuiIOPtr io = ImGui.GetIO();
-
-            io.MouseDown[0] = Control.MouseButtons == MouseButtons.Left;
-            io.MouseDown[1] = Control.MouseButtons == MouseButtons.Right;
-            io.MouseDown[2] = Control.MouseButtons == MouseButtons.Middle;
-
-            var clientPos = control.PointToClient(Control.MousePosition);
-            io.MousePos = new System.Numerics.Vector2(clientPos.X, clientPos.Y);
-
-            foreach (var c in PressedChars)
-                io.AddInputCharacter(c);
-            PressedChars.Clear();
-
             io.KeyCtrl = 0 != (Control.ModifierKeys & Keys.Control);
             io.KeyAlt = 0 != (Control.ModifierKeys & Keys.Alt);
             io.KeyShift = 0 != (Control.ModifierKeys & Keys.Shift);
             io.KeySuper = 0 != (Control.ModifierKeys & (Keys.LWin | Keys.RWin));
-        }
-
-        internal void PressChar(char keyChar)
-        {
-            PressedChars.Add(keyChar);
         }
 
         private static void SetKeyMappings()
@@ -414,6 +429,9 @@ void main()
             io.KeyMap[(int)ImGuiKey.KeypadAdd] = (int)Keys.Add;
             io.KeyMap[(int)ImGuiKey.KeypadEnter] = (int)Keys.Enter;
             //io.KeyMap[(int)ImGuiKey.KeypadEqual] = (int)Keys.Equal;
+            io.KeyMap[(int)ImGuiKey.ReservedForModShift] = (int)Keys.ShiftKey;
+            io.KeyMap[(int)ImGuiKey.ReservedForModCtrl] = (int)Keys.ControlKey;
+            //io.KeyMap[(int)ImGuiKey.ReservedForModAlt] = (int)Keys.Alt;
         }
 
         private void RenderImDrawData(ImDrawDataPtr draw_data)
