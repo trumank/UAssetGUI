@@ -56,10 +56,23 @@ namespace UAssetGUI
         }
     }
 
-    public struct Pin {
+    public struct PinId {
         public int Id;
+        public PinId(int id) { Id = id; }
+    }
+    public struct NodeId {
+        public int Id;
+        public NodeId(int id) { Id = id; }
+    }
+    public struct LinkId {
+        public int Id;
+        public LinkId(int id) { Id = id; }
+    }
+
+    public struct Pin {
+        public PinId Id;
         public PinType Type;
-        public Pin(int id, PinType type)
+        public Pin(PinId id, PinType type)
         {
             Id = id;
             Type = type;
@@ -68,23 +81,23 @@ namespace UAssetGUI
 
     public class Node {
         public ImNodesControl Parent;
-        public int Id;
-        public int exec;
-        public int then;
-        public int input;
-        public int output;
+        public NodeId Id;
+        public PinId exec;
+        public PinId then;
+        public PinId input;
+        public PinId output;
         public float number;
         public NodeType Type;
 
         public Node()
         {
-            Id = IdGen.Next();
+            Id = new NodeId(IdGen.Next());
 
             // pins
-            exec = IdGen.Next();
-            then = IdGen.Next();
-            input = IdGen.Next();
-            output = IdGen.Next();
+            exec = new PinId(IdGen.Next());
+            then = new PinId(IdGen.Next());
+            input = new PinId(IdGen.Next());
+            output = new PinId(IdGen.Next());
 
             Type = NodeType.Expression;
         }
@@ -112,7 +125,7 @@ namespace UAssetGUI
                 _ => throw new ArgumentOutOfRangeException(),
             };
         }
-        public void Draw(int id) {
+        public void Draw() {
             bool isExec = Type == NodeType.TopLevelInstruction;
 
             if (Type == NodeType.TopLevelInstruction)
@@ -122,7 +135,7 @@ namespace UAssetGUI
                 ImNodes.PushColorStyle(imnodesNET.ColorStyle.TitleBarHovered, 0xdd00ddff);
             }
 
-            ImNodes.BeginNode(id);
+            ImNodes.BeginNode(Id.Id);
 
             ImNodes.BeginNodeTitleBar();
             ImGui.Text("asdf");
@@ -135,13 +148,13 @@ namespace UAssetGUI
                 ImGui.BeginGroup();
 
                 var show = Parent.ActivePin != null ? Parent.ActivePin.Item2 == PinType.Exececution : true;
-                if (show) ImNodes.BeginInputAttribute(exec, imnodesNET.PinShape.TriangleFilled);
+                if (show) ImNodes.BeginInputAttribute(exec.Id, imnodesNET.PinShape.TriangleFilled);
                 ImGui.TextUnformatted("exec");
                 if (show) ImNodes.EndInputAttribute();
 
                 ImGui.SameLine();
 
-                if (show) ImNodes.BeginOutputAttribute(then, imnodesNET.PinShape.TriangleFilled);
+                if (show) ImNodes.BeginOutputAttribute(then.Id, imnodesNET.PinShape.TriangleFilled);
                 ImGui.TextUnformatted("then");
                 if (show) ImNodes.EndOutputAttribute();
 
@@ -152,7 +165,7 @@ namespace UAssetGUI
                 ImGui.BeginGroup();
 
                 var show = Parent.ActivePin != null ? Parent.ActivePin.Item2 == PinType.Expression : true;
-                if (show) ImNodes.BeginInputAttribute(input);
+                if (show) ImNodes.BeginInputAttribute(input.Id);
                 ImGui.Text("number");
                 ImGui.SameLine();
                 ImGui.PushItemWidth(100.0f);
@@ -162,7 +175,7 @@ namespace UAssetGUI
 
                 ImGui.SameLine();
 
-                if (show) ImNodes.BeginOutputAttribute(output);
+                if (show) ImNodes.BeginOutputAttribute(output.Id);
                 ImGui.Text("output pin");
                 if (show) ImNodes.EndOutputAttribute();
 
@@ -204,18 +217,18 @@ namespace UAssetGUI
 
     public class Link
     {
-        public int Id;
-        public int PinA;
-        public int PinB;
+        public LinkId Id;
+        public PinId PinA;
+        public PinId PinB;
         public bool Exec;
 
-        public Link Duplicate(int newA, int newB)
+        public Link Duplicate(PinId pinA, PinId pinB)
         {
             return new Link()
             {
-                Id = IdGen.Next(),
-                PinA = newA,
-                PinB = newB,
+                Id = new LinkId(IdGen.Next()),
+                PinA = pinA,
+                PinB = pinB,
                 Exec = Exec,
             };
         }
@@ -225,17 +238,17 @@ namespace UAssetGUI
     {
         ImGuiController controller;
         System.Timers.Timer myTimer = new System.Timers.Timer(1000/144);
-        Dictionary<int, Node> nodes = new Dictionary<int, Node>();
+        Dictionary<NodeId, Node> nodes = new Dictionary<NodeId, Node>();
 
-        Dictionary<int, Link> links = new Dictionary<int, Link>();
-        Dictionary<int, Dictionary<int, Link>> linksBack = new Dictionary<int, Dictionary<int, Link>>();
-        Dictionary<int, Dictionary<int, Link>> linksForward = new Dictionary<int, Dictionary<int, Link>>();
+        Dictionary<LinkId, Link> links = new Dictionary<LinkId, Link>();
+        Dictionary<PinId, Dictionary<PinId, Link>> linksBack = new Dictionary<PinId, Dictionary<PinId, Link>>();
+        Dictionary<PinId, Dictionary<PinId, Link>> linksForward = new Dictionary<PinId, Dictionary<PinId, Link>>();
 
-        Dictionary<int /* pinId */, Tuple<int /* nodeId */, PinType>> pins = new Dictionary<int, Tuple<int, PinType>>();
+        Dictionary<PinId, Tuple<NodeId, PinType>> pins = new Dictionary<PinId, Tuple<NodeId, PinType>>();
 
         Random rnd = new Random();
 
-        public Tuple<int, PinType> ActivePin = null;
+        public Tuple<PinId, PinType> ActivePin = null;
 
         public ImNodesControl() : base(new GraphicsMode(32, 24, 8, 8))
         {
@@ -278,27 +291,27 @@ namespace UAssetGUI
             CheckResize();
         }
 
-        public static int[] GetSelectedNodes()
+        public static IEnumerable<NodeId> GetSelectedNodes()
         {
             var nodes = new int[ImNodes.NumSelectedNodes()];
             if (nodes.Length > 0) ImNodes.GetSelectedNodes(ref nodes[0]);
-            return nodes;
+            return nodes.Select(i => new NodeId(i));
         }
-        public static int[] GetSelectedLinks()
+        public static IEnumerable<LinkId> GetSelectedLinks()
         {
             var links = new int[ImNodes.NumSelectedLinks()];
             if (links.Length > 0) ImNodes.GetSelectedLinks(ref links[0]);
-            return links;
+            return links.Select(i => new LinkId(i));
         }
 
         public void AddNode(Node node)
         {
             foreach (var pin in node.GetPins())
-                pins.Add(pin.Id, new Tuple<int, PinType>(node.Id, pin.Type));
+                pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
             nodes.Add(node.Id, node);
             node.Parent = this;
         }
-        public void RemoveNode(int id)
+        public void RemoveNode(NodeId id)
         {
             Node node = nodes[id];
             node.Parent = null;
@@ -312,9 +325,9 @@ namespace UAssetGUI
 
         public void AddPinForNode(Node node, Pin pin)
         {
-            pins.Add(pin.Id, new Tuple<int, PinType>(node.Id, pin.Type));
+            pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
         }
-        public void RemovePin(int id)
+        public void RemovePin(PinId id)
         {
             foreach (var link in GetLinksForPin(id).ToList())
                 RemoveLink(link.Id);
@@ -328,24 +341,24 @@ namespace UAssetGUI
             linksBack.GetOrCreate(link.PinA).Add(link.PinB, link);
             linksForward.GetOrCreate(link.PinB).Add(link.PinA, link);
         }
-        public void RemoveLink(int id)
+        public void RemoveLink(LinkId id)
         {
             Link link = links[id];
             links.Remove(link.Id);
             linksBack[link.PinA].Remove(link.PinB);
             linksForward[link.PinB].Remove(link.PinA);
         }
-        public IEnumerable<Link> GetBackLinksForPin(int pinId)
+        public IEnumerable<Link> GetBackLinksForPin(PinId id)
         {
-            return linksBack.TryGetValue(pinId, out var link) ? link.Values : Enumerable.Empty<Link>();
+            return linksBack.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
         }
-        public IEnumerable<Link> GetForwardLinksForPin(int pinId)
+        public IEnumerable<Link> GetForwardLinksForPin(PinId id)
         {
-            return linksForward.TryGetValue(pinId, out var link) ? link.Values : Enumerable.Empty<Link>();
+            return linksForward.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
         }
-        public IEnumerable<Link> GetLinksForPin(int pinId)
+        public IEnumerable<Link> GetLinksForPin(PinId id)
         {
-            return GetBackLinksForPin(pinId).Concat(GetForwardLinksForPin(pinId));
+            return GetBackLinksForPin(id).Concat(GetForwardLinksForPin(id));
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -370,8 +383,8 @@ namespace UAssetGUI
             ImGui.Begin("nodes", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoBringToFrontOnFocus);
 
             Tuple<Vector2, Node> actionNewNode = null;
-            Tuple<Vector2, int[]> actionDuplicatedNodes = null;
-            Tuple<int[] /* nodesIds */, int[] /* linkIds */> actionDelete = null;
+            Tuple<Vector2, IEnumerable<NodeId>> actionDuplicatedNodes = null;
+            Tuple<IEnumerable<NodeId>, IEnumerable<LinkId>> actionDelete = null;
 
             ImNodes.BeginNodeEditor();
 
@@ -381,7 +394,7 @@ namespace UAssetGUI
             {
                 var id = pair.Key;
                 var node = pair.Value;
-                node.Draw(id);
+                node.Draw();
             }
 
             foreach (var pair in links) {
@@ -394,7 +407,7 @@ namespace UAssetGUI
                     ImNodes.PushStyleVar(imnodesNET.StyleVar.PinLineThickness, 10);
                     ImNodes.PushColorStyle(imnodesNET.ColorStyle.Link, 0xff00ffff);
                 }
-                ImNodes.Link(id, link.PinA, link.PinB);
+                ImNodes.Link(id.Id, link.PinA.Id, link.PinB.Id);
                 if (link.Exec)
                 {
                     ImNodes.PopStyleVar();
@@ -419,14 +432,14 @@ namespace UAssetGUI
                 if (ImGui.Selectable("duplicate"))
                 {
                     //Console.WriteLine(selectedNodes.Select(i => i.ToString()).Aggregate((a, b) => a + ", " + b));
-                    actionDuplicatedNodes = new Tuple<Vector2, int[]>(ImGui.GetWindowPos(), GetSelectedNodes());
+                    actionDuplicatedNodes = new Tuple<Vector2, IEnumerable<NodeId>>(ImGui.GetWindowPos(), GetSelectedNodes());
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.EndDisabled();
                 ImGui.BeginDisabled(ImNodes.NumSelectedNodes() == 0 && ImNodes.NumSelectedLinks() == 0);
                 if (ImGui.Selectable("delete"))
                 {
-                    actionDelete = new Tuple<int[], int[]>(GetSelectedNodes(), GetSelectedLinks());
+                    actionDelete = new Tuple<IEnumerable<NodeId>, IEnumerable<LinkId>>(GetSelectedNodes(), GetSelectedLinks());
                     ImGui.CloseCurrentPopup();
                 }
                 ImGui.EndDisabled();
@@ -440,17 +453,17 @@ namespace UAssetGUI
 
             ImNodes.EndNodeEditor();
 
-            int startPin = 0, endPin = 0;
-            if (ImNodes.IsLinkCreated(ref startPin, ref endPin) && startPin != endPin) {
+            var startPin = new PinId(0);
+            var endPin = new PinId(0);
+            if (ImNodes.IsLinkCreated(ref startPin.Id, ref endPin.Id)) {
                 ActivePin = null;
 
                 // TODO Ideally links cannot even get this far if they are connecting pins of different types,
                 // but this is a limiation with imnodes and will need to be patches in the library
-                if (pins[startPin].Item2 == pins[endPin].Item2)
+                if (startPin.Id != endPin.Id && pins[startPin].Item2 == pins[endPin].Item2)
                 {
                     var link = new Link()
                     {
-                        Id = IdGen.Next(),
                         PinA = startPin,
                         PinB = endPin,
                         Exec = rnd.NextDouble() > 0.5,
@@ -462,40 +475,40 @@ namespace UAssetGUI
             int dropped = 0;
             if (ImNodes.IsLinkDropped(ref dropped, true))
                 ActivePin = null;
-            int pinId = 0;;
-            ImNodes.IsLinkStarted(ref pinId);
-            if (pinId != 0)
+            var pinId = new PinId(0);;
+            ImNodes.IsLinkStarted(ref pinId.Id);
+            if (pinId.Id != 0)
             {
                 var pin = pins[pinId];
-                ActivePin = new Tuple<int, PinType>(pinId, pin.Item2);
+                ActivePin = new Tuple<PinId, PinType>(pinId, pin.Item2);
             }
 
             if (actionNewNode != null)
             {
                 AddNode(actionNewNode.Item2);
-                ImNodes.SetNodeScreenSpacePos(actionNewNode.Item2.Id, actionNewNode.Item1);
+                ImNodes.SetNodeScreenSpacePos(actionNewNode.Item2.Id.Id, actionNewNode.Item1);
             }
             if (actionDuplicatedNodes != null)
             {
-                var min = ImNodes.GetNodeScreenSpacePos(actionDuplicatedNodes.Item2[0]);
+                var min = ImNodes.GetNodeScreenSpacePos(actionDuplicatedNodes.Item2.First().Id);
                 foreach (var nodeId in actionDuplicatedNodes.Item2)
                 {
-                    var pos = ImNodes.GetNodeScreenSpacePos(nodeId);
+                    var pos = ImNodes.GetNodeScreenSpacePos(nodeId.Id);
                     min.X = Math.Min(min.X, pos.X);
                     min.Y = Math.Min(min.Y, pos.Y);
                 }
                 var map = actionDuplicatedNodes.Item2.Select(nodeId =>
                 {
                     var node = nodes[nodeId];
-                    var pos = ImNodes.GetNodeScreenSpacePos(nodeId);
+                    var pos = ImNodes.GetNodeScreenSpacePos(nodeId.Id);
 
                     var newNode = node.Duplicate();
                     AddNode(newNode);
-                    ImNodes.SetNodeScreenSpacePos(newNode.Id, pos - min + actionDuplicatedNodes.Item1);
+                    ImNodes.SetNodeScreenSpacePos(newNode.Id.Id, pos - min + actionDuplicatedNodes.Item1);
 
                     return new Tuple<Node, Node>(node, newNode);
                 }).ToList();
-                var pinMap = map.SelectMany(p => p.Item1.GetPins().Zip(p.Item2.GetPins(), (o, n) => new KeyValuePair<int, int>(o.Id, n.Id))).ToDictionary(p => p.Key, p => p.Value);
+                var pinMap = map.SelectMany(p => p.Item1.GetPins().Zip(p.Item2.GetPins(), (o, n) => new KeyValuePair<PinId, PinId>(o.Id, n.Id))).ToDictionary(p => p.Key, p => p.Value);
                 foreach (var pair in pinMap)
                 {
                     var oldPinA = pair.Key;
