@@ -15,7 +15,6 @@ using UAssetAPI.ExportTypes;
 using UAssetAPI.Kismet.Bytecode;
 using UAssetAPI.Kismet.Bytecode.Expressions;
 using System.Drawing;
-using System.Timers;
 using System.Numerics;
 
 namespace UAssetGUI
@@ -237,14 +236,13 @@ namespace UAssetGUI
     public class ImNodesControl : OpenTK.GLControl
     {
         ImGuiController controller;
-        System.Timers.Timer myTimer = new System.Timers.Timer(1000/144);
+
         Dictionary<NodeId, Node> nodes = new Dictionary<NodeId, Node>();
+        Dictionary<LinkId, Link> Links = new Dictionary<LinkId, Link>();
+        Dictionary<PinId, Tuple<NodeId, PinType>> Pins = new Dictionary<PinId, Tuple<NodeId, PinType>>();
 
-        Dictionary<LinkId, Link> links = new Dictionary<LinkId, Link>();
-        Dictionary<PinId, Dictionary<PinId, Link>> linksBack = new Dictionary<PinId, Dictionary<PinId, Link>>();
-        Dictionary<PinId, Dictionary<PinId, Link>> linksForward = new Dictionary<PinId, Dictionary<PinId, Link>>();
-
-        Dictionary<PinId, Tuple<NodeId, PinType>> pins = new Dictionary<PinId, Tuple<NodeId, PinType>>();
+        Dictionary<PinId, Dictionary<PinId, Link>> LinksBack = new Dictionary<PinId, Dictionary<PinId, Link>>();
+        Dictionary<PinId, Dictionary<PinId, Link>> LinksForward = new Dictionary<PinId, Dictionary<PinId, Link>>();
 
         Random rnd = new Random();
 
@@ -252,18 +250,12 @@ namespace UAssetGUI
 
         public ImNodesControl() : base(new GraphicsMode(32, 24, 8, 8))
         {
-            Size = new System.Drawing.Size(574, 401);
             MakeCurrent();
             controller = new ImGuiController(this);
             ImNodes.Initialize();
             ImNodes.SetImGuiContext(controller.context);
 
             SetStyle(ControlStyles.Selectable, true);
-            myTimer.AutoReset = true;
-            myTimer.Elapsed += (Object obj, ElapsedEventArgs args) => {
-                Invalidate();
-            };
-            myTimer.Start();
         }
 
         protected override void WndProc(ref Message m)
@@ -307,7 +299,7 @@ namespace UAssetGUI
         public void AddNode(Node node)
         {
             foreach (var pin in node.GetPins())
-                pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
+                Pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
             nodes.Add(node.Id, node);
             node.Parent = this;
         }
@@ -319,42 +311,42 @@ namespace UAssetGUI
                 foreach (var link in GetLinksForPin(pin.Id).ToList())
                     RemoveLink(link.Id);
             foreach (var pin in node.GetPins())
-                pins.Remove(pin.Id);
+                Pins.Remove(pin.Id);
             nodes.Remove(id);
         }
 
         public void AddPinForNode(Node node, Pin pin)
         {
-            pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
+            Pins.Add(pin.Id, new Tuple<NodeId, PinType>(node.Id, pin.Type));
         }
         public void RemovePin(PinId id)
         {
             foreach (var link in GetLinksForPin(id).ToList())
                 RemoveLink(link.Id);
 
-            pins.Remove(id);
+            Pins.Remove(id);
         }
 
         public void AddLink(Link link)
         {
-            links.Add(link.Id, link);
-            linksBack.GetOrCreate(link.PinA).Add(link.PinB, link);
-            linksForward.GetOrCreate(link.PinB).Add(link.PinA, link);
+            Links.Add(link.Id, link);
+            LinksBack.GetOrCreate(link.PinA).Add(link.PinB, link);
+            LinksForward.GetOrCreate(link.PinB).Add(link.PinA, link);
         }
         public void RemoveLink(LinkId id)
         {
-            Link link = links[id];
-            links.Remove(link.Id);
-            linksBack[link.PinA].Remove(link.PinB);
-            linksForward[link.PinB].Remove(link.PinA);
+            Link link = Links[id];
+            Links.Remove(link.Id);
+            LinksBack[link.PinA].Remove(link.PinB);
+            LinksForward[link.PinB].Remove(link.PinA);
         }
         public IEnumerable<Link> GetBackLinksForPin(PinId id)
         {
-            return linksBack.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
+            return LinksBack.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
         }
         public IEnumerable<Link> GetForwardLinksForPin(PinId id)
         {
-            return linksForward.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
+            return LinksForward.TryGetValue(id, out var link) ? link.Values : Enumerable.Empty<Link>();
         }
         public IEnumerable<Link> GetLinksForPin(PinId id)
         {
@@ -397,7 +389,7 @@ namespace UAssetGUI
                 node.Draw();
             }
 
-            foreach (var pair in links) {
+            foreach (var pair in Links) {
                 var id = pair.Key;
                 var link = pair.Value;
 
@@ -460,7 +452,7 @@ namespace UAssetGUI
 
                 // TODO Ideally links cannot even get this far if they are connecting pins of different types,
                 // but this is a limiation with imnodes and will need to be patches in the library
-                if (startPin.Id != endPin.Id && pins[startPin].Item2 == pins[endPin].Item2)
+                if (startPin.Id != endPin.Id && Pins[startPin].Item2 == Pins[endPin].Item2)
                 {
                     var link = new Link()
                     {
@@ -479,7 +471,7 @@ namespace UAssetGUI
             ImNodes.IsLinkStarted(ref pinId.Id);
             if (pinId.Id != 0)
             {
-                var pin = pins[pinId];
+                var pin = Pins[pinId];
                 ActivePin = new Tuple<PinId, PinType>(pinId, pin.Item2);
             }
 
@@ -523,7 +515,7 @@ namespace UAssetGUI
             if (actionDelete != null)
             {
                 foreach (var nodeId in actionDelete.Item1) RemoveNode(nodeId);
-                foreach (var linkId in actionDelete.Item2.Where(id => links.ContainsKey(id))) RemoveLink(linkId);
+                foreach (var linkId in actionDelete.Item2.Where(id => Links.ContainsKey(id))) RemoveLink(linkId);
             }
 
             ImGui.End();
@@ -537,6 +529,8 @@ namespace UAssetGUI
 
             sw.Stop();
             //Console.WriteLine($"paint took {sw.ElapsedMilliseconds}ms");
+
+            Invalidate();
         }
     }
 
