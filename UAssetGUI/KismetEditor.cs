@@ -20,30 +20,158 @@ using System.Numerics;
 
 namespace UAssetGUI
 {
-    class Id
+    static class Util
+    {
+        public static TValue GetOrCreate<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key)
+            where TValue : new()
+        {
+            if (!dict.TryGetValue(key, out TValue val))
+            {
+                val = new TValue();
+                dict.Add(key, val);
+            }
+
+            return val;
+        }
+    }
+
+    class IdGen
     {
         static int next = 0;
 
-        public static int Gen()
+        public static int Next()
         {
             return next++;
         }
     }
 
     class Node {
+        public ImNodesControl Parent;
+        public int exec;
+        public int then;
         public int input;
         public int output;
+        public float number;
+        public bool mode = false;
 
-        public Node()
+        public Node(ImNodesControl parent)
         {
-            input = Id.Gen();
-            output = Id.Gen();
+            Parent = parent;
+            exec = IdGen.Next();
+            then = IdGen.Next();
+            input = IdGen.Next();
+            output = IdGen.Next();
         }
         public Node Duplicate()
         {
-            return new Node() {
-                input = Id.Gen(),
-                output = Id.Gen(),
+            return new Node(Parent)
+            {
+                mode = mode,
+                number = number,
+            };
+        }
+        public List<int> GetAttributeIds()
+        {
+            if (mode)
+                return new List<int> {exec, then, input, output};
+            else
+                return new List<int> {input, output};
+        }
+        public void Draw(int id) {
+            bool newMode = mode;
+
+            if (mode)
+            {
+                ImNodes.PushColorStyle(imnodesNET.ColorStyle.TitleBar, 0x770077ff);
+                ImNodes.PushColorStyle(imnodesNET.ColorStyle.TitleBarSelected, 0xdd00ddff);
+                ImNodes.PushColorStyle(imnodesNET.ColorStyle.TitleBarHovered, 0xdd00ddff);
+            }
+
+            ImNodes.BeginNode(id);
+
+            ImNodes.BeginNodeTitleBar();
+            ImGui.Text("asdf");
+            ImGui.SameLine();
+            ImGui.Checkbox("sw", ref newMode);
+            ImNodes.EndNodeTitleBar();
+
+            if (mode) {
+                ImGui.BeginGroup();
+
+                if (Parent.ActiveLink == 0) ImNodes.BeginInputAttribute(exec, imnodesNET.PinShape.TriangleFilled);
+                ImGui.TextUnformatted("exec");
+                if (Parent.ActiveLink == 0) ImNodes.EndInputAttribute();
+
+                ImGui.SameLine();
+
+                if (Parent.ActiveLink == 0) ImNodes.BeginOutputAttribute(then, imnodesNET.PinShape.TriangleFilled);
+                ImGui.TextUnformatted("then");
+                if (Parent.ActiveLink == 0) ImNodes.EndOutputAttribute();
+
+                ImGui.EndGroup();
+            }
+
+            ImGui.BeginGroup();
+
+            ImNodes.BeginInputAttribute(input);
+            ImGui.Text("number");
+            ImGui.SameLine();
+            ImGui.PushItemWidth(100.0f);
+            ImGui.DragFloat("##hidelabel", ref number);
+            ImGui.PopItemWidth();
+            ImNodes.EndInputAttribute();
+
+            ImGui.SameLine();
+
+            ImNodes.BeginOutputAttribute(output);
+            ImGui.Text("output pin");
+            ImNodes.EndOutputAttribute();
+
+            ImGui.EndGroup();
+
+            ImNodes.EndNode();
+
+            if (mode)
+            {
+                ImNodes.PopColorStyle();
+                ImNodes.PopColorStyle();
+                ImNodes.PopColorStyle();
+            }
+
+            if (mode != newMode)
+            {
+                if (newMode)
+                {
+                }
+                else
+                {
+                    var exec_links = Parent.GetLinksForPin(exec).ToList();
+                    foreach (var link in exec_links)
+                        Parent.RemoveLink(link.Id);
+                    var then_links = Parent.GetLinksForPin(exec).ToList();
+                    foreach (var link in then_links)
+                        Parent.RemoveLink(link.Id);
+                }
+            }
+            mode = newMode;
+        }
+    }
+
+    public class Link
+    {
+        public int Id;
+        public int A;
+        public int B;
+        public bool Exec;
+
+        public Link Duplicate(int newA, int newB)
+        {
+            return new Link()
+            {
+                Id = IdGen.Next(),
+                A = newA,
+                B = newB,
+                Exec = Exec,
             };
         }
     }
@@ -52,10 +180,15 @@ namespace UAssetGUI
     {
         ImGuiController controller;
         System.Timers.Timer myTimer = new System.Timers.Timer(1000/144);
-        float number;
-        Dictionary<int, Tuple<int, int, bool>> links = new Dictionary<int, Tuple<int, int, bool>>();
         Dictionary<int, Node> nodes = new Dictionary<int, Node>();
+
+        Dictionary<int, Link> links = new Dictionary<int, Link>();
+        Dictionary<int, Dictionary<int, Link>> links_back = new Dictionary<int, Dictionary<int, Link>>();
+        Dictionary<int, Dictionary<int, Link>> links_forward = new Dictionary<int, Dictionary<int, Link>>();
+
         Random rnd = new Random();
+
+        public int ActiveLink = 0;
 
         public ImNodesControl() : base(new GraphicsMode(32, 24, 8, 8))
         {
@@ -98,17 +231,52 @@ namespace UAssetGUI
             CheckResize();
         }
 
-        protected static int[] GetSelectedNodes()
+        public static int[] GetSelectedNodes()
         {
             var nodes = new int[ImNodes.NumSelectedNodes()];
             if (nodes.Length > 0) ImNodes.GetSelectedNodes(ref nodes[0]);
             return nodes;
         }
-        protected static int[] GetSelectedLinks()
+        public static int[] GetSelectedLinks()
         {
             var links = new int[ImNodes.NumSelectedLinks()];
             if (links.Length > 0) ImNodes.GetSelectedLinks(ref links[0]);
             return links;
+        }
+
+        public void RemoveNode(int id)
+        {
+            Node node = nodes[id];
+            foreach (var attribute_id in node.GetAttributeIds())
+                foreach (var link in GetLinksForPin(attribute_id).ToList())
+                    RemoveLink(link.Id);
+            nodes.Remove(id);
+        }
+
+        public void AddLink(Link link)
+        {
+            links.Add(link.Id, link);
+            links_back.GetOrCreate(link.A).Add(link.B, link);
+            links_forward.GetOrCreate(link.B).Add(link.A, link);
+        }
+        public void RemoveLink(int id)
+        {
+            Link link = links[id];
+            links.Remove(link.Id);
+            links_back[link.A].Remove(link.B);
+            links_forward[link.B].Remove(link.A);
+        }
+        public IEnumerable<Link> GetBackLinksForPin(int attribute_id)
+        {
+            return links_back.TryGetValue(attribute_id, out var link) ? link.Values : Enumerable.Empty<Link>();
+        }
+        public IEnumerable<Link> GetForwardLinksForPin(int attribute_id)
+        {
+            return links_forward.TryGetValue(attribute_id, out var link) ? link.Values : Enumerable.Empty<Link>();
+        }
+        public IEnumerable<Link> GetLinksForPin(int attribute_id)
+        {
+            return GetBackLinksForPin(attribute_id).Concat(GetForwardLinksForPin(attribute_id));
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -144,45 +312,21 @@ namespace UAssetGUI
             {
                 var id = pair.Key;
                 var node = pair.Value;
-
-                ImNodes.BeginNode(id);
-                ImNodes.BeginNodeTitleBar();
-                ImGui.Text("asdf");
-                ImNodes.EndNodeTitleBar();
-
-                ImGui.BeginGroup();
-
-                ImNodes.BeginInputAttribute(node.input);
-                ImGui.Text("number");
-                ImGui.SameLine();
-                ImGui.PushItemWidth(100.0f);
-                ImGui.DragFloat("##hidelabel", ref number);
-                ImGui.PopItemWidth();
-                ImNodes.EndInputAttribute();
-
-                ImGui.SameLine();
-
-                ImNodes.BeginOutputAttribute(node.output);
-                ImGui.Text("output pin");
-                ImNodes.EndOutputAttribute();
-
-                ImGui.EndGroup();
-
-                ImNodes.EndNode();
+                node.Draw(id);
             }
 
             foreach (var pair in links) {
                 var id = pair.Key;
                 var link = pair.Value;
 
-                if (link.Item3)
+                if (link.Exec)
                 {
                     ImNodes.PushStyleVar(imnodesNET.StyleVar.LinkThickness, 10);
                     ImNodes.PushStyleVar(imnodesNET.StyleVar.PinLineThickness, 10);
                     ImNodes.PushColorStyle(imnodesNET.ColorStyle.Link, 0xff00ffff);
                 }
-                ImNodes.Link(id, link.Item1, link.Item2);
-                if (link.Item3)
+                ImNodes.Link(id, link.A, link.B);
+                if (link.Exec)
                 {
                     ImNodes.PopStyleVar();
                     ImNodes.PopStyleVar();
@@ -199,20 +343,24 @@ namespace UAssetGUI
                 ImGui.TextUnformatted("This a popup!");
                 if (ImGui.Selectable("new"))
                 {
-                    actionNewNode = new Tuple<Vector2, int, Node>(ImGui.GetWindowPos(), Id.Gen(), new Node());
+                    actionNewNode = new Tuple<Vector2, int, Node>(ImGui.GetWindowPos(), IdGen.Next(), new Node(this));
                     ImGui.CloseCurrentPopup();
                 }
+                ImGui.BeginDisabled(ImNodes.NumSelectedNodes() == 0);
                 if (ImGui.Selectable("duplicate"))
                 {
                     //Console.WriteLine(selectedNodes.Select(i => i.ToString()).Aggregate((a, b) => a + ", " + b));
                     actionDuplicatedNodes = new Tuple<Vector2, int[]>(ImGui.GetWindowPos(), GetSelectedNodes());
                     ImGui.CloseCurrentPopup();
                 }
+                ImGui.EndDisabled();
+                ImGui.BeginDisabled(ImNodes.NumSelectedNodes() == 0 && ImNodes.NumSelectedLinks() == 0);
                 if (ImGui.Selectable("delete"))
                 {
                     actionDelete = new Tuple<int[], int[]>(GetSelectedNodes(), GetSelectedLinks());
                     ImGui.CloseCurrentPopup();
                 }
+                ImGui.EndDisabled();
                 ImGui.EndPopup();
             }
 
@@ -225,8 +373,21 @@ namespace UAssetGUI
 
             int startAttribute = 0, endAttribute = 0;
             if (ImNodes.IsLinkCreated(ref startAttribute, ref endAttribute) && startAttribute != endAttribute) {
-                links.Add(Id.Gen(), new Tuple<int, int, bool>(startAttribute, endAttribute, rnd.NextDouble() > 0.5));
+                ActiveLink = 0;
+                var link = new Link()
+                {
+                    Id = IdGen.Next(),
+                    A = startAttribute,
+                    B = endAttribute,
+                    Exec = rnd.NextDouble() > 0.5,
+                };
+                AddLink(link);
             }
+
+            int dropped = 0;
+            if (ImNodes.IsLinkDropped(ref dropped, true))
+                ActiveLink = 0;
+            ImNodes.IsLinkStarted(ref ActiveLink);
 
             if (actionNewNode != null)
             {
@@ -242,21 +403,34 @@ namespace UAssetGUI
                     min.X = Math.Min(min.X, pos.X);
                     min.Y = Math.Min(min.Y, pos.Y);
                 }
-                foreach (var node_id in actionDuplicatedNodes.Item2)
+                var map = actionDuplicatedNodes.Item2.Select(node_id =>
                 {
                     var node = nodes[node_id];
                     var pos = ImNodes.GetNodeScreenSpacePos(node_id);
 
-                    var new_id = Id.Gen();
-                    nodes.Add(new_id, node.Duplicate());
+                    var new_id = IdGen.Next();
+                    var new_node = node.Duplicate();
+                    nodes.Add(new_id, new_node);
                     ImNodes.SetNodeScreenSpacePos(new_id, pos - min + actionDuplicatedNodes.Item1);
-                    //ImNodes.SelectNode
+
+                    return new Tuple<Node, Node>(node, new_node);
+                }).ToList();
+                var pinMap = map.SelectMany(p => p.Item1.GetAttributeIds().Zip(p.Item2.GetAttributeIds(), (o, n) => new KeyValuePair<int, int>(o, n))).ToDictionary(p => p.Key, p => p.Value);
+                foreach (var pair in pinMap)
+                {
+                    var old_attribute = pair.Key;
+                    var new_attribute = pair.Value;
+
+                    var links = GetBackLinksForPin(old_attribute);
+                    foreach (var link in links)
+                        if (pinMap.TryGetValue(link.B, out var new_attribute_b))
+                            AddLink(link.Duplicate(new_attribute, new_attribute_b));
                 }
             }
             if (actionDelete != null)
             {
-                foreach (var node_id in actionDelete.Item1) nodes.Remove(node_id);
-                foreach (var link_id in actionDelete.Item2) links.Remove(link_id);
+                foreach (var node_id in actionDelete.Item1) RemoveNode(node_id);
+                foreach (var link_id in actionDelete.Item2.Where(id => links.ContainsKey(id))) RemoveLink(link_id);
             }
 
             ImGui.End();
